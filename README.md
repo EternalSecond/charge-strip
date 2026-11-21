@@ -26,7 +26,7 @@ The portable executable is unsigned. Windows may display a publisher warning. To
 | Check devices, use the arrows and set a limit | Choose which readings appear. The first selected device drives the tray icon. |
 | Enable **Show a number on the tray icon** | Use a percentage instead of a filled battery symbol |
 | Change display mode | Show icons and percentages, icons only, or percentages only |
-| Change scale, spacing, colors or opacity | Adjust the battery flyout and tray icon colors |
+| Change scale, spacing, colors or background tint | Adjust the battery flyout and tray icon colors |
 | Enable **Run with Windows** | Start Charge Strip when your Windows account signs in |
 | Save / Cancel | Keep / revert changes |
 
@@ -61,7 +61,7 @@ Use Windows 11 x64 and the included .NET Framework compiler. Run these commands 
 | `"Start Charge Strip.cmd" /build` | Rebuild and launch. Exit any running copy first. |
 | `"Start Charge Strip.cmd" /package` | Build the portable ZIP and SHA-256 checksum in `build\` |
 
-Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the tray icon, popup, and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
+Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the popup and startup. `SystemTrayIcon.cs` registers the tray icon and anchors menus to its Windows position. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
 
 ### Protocol references
 

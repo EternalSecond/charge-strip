@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## 0.5.2
+
+- Anchor the battery popup to the native Windows tray icon.
+- Remove the click cooldown and prepare popup rows before the menu opens.
+- Use an opaque popup background to keep text readable over other windows.
+
 ## 0.5.1
 
 - Use the Windows notification area for all system tray display modes. Removed the floating Charge button.

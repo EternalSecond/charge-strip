@@ -49,6 +49,14 @@ public sealed class StripSettings
         return true;
     }
 
+    internal static Color PopupColor(string hex, int tint)
+    {
+        var color = ColorOf(hex);
+        return Color.FromArgb(24 + (color.R - 24) * tint / 100,
+                              28 + (color.G - 28) * tint / 100,
+                              36 + (color.B - 36) * tint / 100);
+    }
+
     internal static Color ColorOf(string hex)
     {
         Color color;
@@ -183,7 +191,7 @@ internal sealed class SettingsWindow : Form
         column.Controls.Add(Heading("Розмір і вигляд"));
         column.Controls.Add(Line("Масштаб, %", zoom));
         column.Controls.Add(Line("Відступ, px", gap));
-        column.Controls.Add(Line("Непрозорість, %", alpha));
+        column.Controls.Add(Line("Відтінок фону, %", alpha));
         column.Controls.Add(Heading("Кольори"));
 
         for (int i = 0; i < ColorNames.Length; i++)
@@ -497,11 +505,11 @@ internal sealed class SettingsWindow : Form
             var rows = owner.Readings;
             var first = rows.FirstOrDefault();
             Color fine = StripSettings.ColorOf(first != null && first.Percent <= 25 ? settings.Low : settings.Icons);
-            Color body = StripSettings.ColorOf(settings.Background);
+            Color body = StripSettings.PopupColor(settings.Background, settings.Alpha);
             var canvas = ClientRectangle;
             if (canvas.Width < 2 || canvas.Height < 2) return;
             using (var backdrop = new LinearGradientBrush(canvas, Color.FromArgb(35, 58, 94), Color.FromArgb(21, 29, 46), 65f))
-            using (var panel = new SolidBrush(Color.FromArgb(255 * Math.Max(35, settings.Alpha) / 100, body)))
+            using (var panel = new SolidBrush(body))
             using (var bar = new SolidBrush(Color.FromArgb(19, 23, 33)))
             using (var border = new Pen(Color.FromArgb(105, 143, 165, 190)))
             using (var title = new Font("Segoe UI", 10, FontStyle.Bold))

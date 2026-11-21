@@ -42,7 +42,7 @@ internal sealed class Strip : ApplicationContext
     private static readonly Color Muted = Color.FromArgb(174, 183, 196);
     private readonly ContextMenuStrip details = new ContextMenuStrip();
     private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
-    private readonly NotifyIcon tray = new NotifyIcon();
+    private readonly SystemTrayIcon tray = new SystemTrayIcon();
     private readonly Font popupHeaderFont = new Font("Segoe UI", 10, FontStyle.Bold);
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 12000 };
     private readonly System.Windows.Forms.Timer inputTimer = new System.Windows.Forms.Timer { Interval = 150 };
@@ -50,7 +50,6 @@ internal sealed class Strip : ApplicationContext
     private string menuLanguage, iconState;
     private List<BatteryReading> rows = new List<BatteryReading>();
     private DateTime? refreshed;
-    private int? dismissedByClick;
     private StripSettings saved, draft;
     private SettingsWindow editor;
     private bool polling, disposed;
@@ -65,25 +64,27 @@ internal sealed class Strip : ApplicationContext
         details.ShowImageMargin = false;
         details.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
         details.ForeColor = TextColor;
-        details.Closed += (sender, args) =>
+        details.Closing += (sender, args) =>
         {
-            if (args.CloseReason == ToolStripDropDownCloseReason.AppClicked ||
-                args.CloseReason == ToolStripDropDownCloseReason.AppFocusChange)
-                dismissedByClick = Environment.TickCount;
+            if ((args.CloseReason == ToolStripDropDownCloseReason.AppClicked
+                || (args.CloseReason == ToolStripDropDownCloseReason.AppFocusChange
+                    && (Control.MouseButtons & MouseButtons.Left) != 0))
+                && tray.Bounds.Contains(Cursor.Position))
+                args.Cancel = true;
         };
+        details.Opened += (sender, args) => Native.RoundCorners(details.Handle);
         trayMenu.Items.Add("Налаштування", null, (sender, args) => OpenSettings());
         trayMenu.Items.Add("Оновити", null, async (sender, args) => await RefreshReadings());
         trayMenu.Items.Add("Вийти", null, (sender, args) => ExitThread());
-        tray.ContextMenuStrip = trayMenu;
-        tray.MouseClick += (sender, args) =>
+        tray.Activated += () => OpenDetails(tray.PopupAnchor());
+        tray.MenuRequested += () =>
         {
-            if (args.Button == MouseButtons.Left) OpenDetails(Cursor.Position);
+            details.Close();
+            tray.PrepareMenu();
+            trayMenu.Show(tray.PopupAnchor(), ToolStripDropDownDirection.AboveLeft);
         };
-        tray.DoubleClick += (sender, args) => OpenSettings();
-        trayMenu.Opening += (sender, args) => details.Close();
 
         ApplySettings();
-        tray.Visible = true;
         bool initialRead = true;
         inputTimer.Tick += async (sender, args) =>
         {
@@ -120,18 +121,17 @@ internal sealed class Strip : ApplicationContext
         int? percent = primary == null ? null : primary.Percent;
         Color accent = StripSettings.ColorOf(primary != null && primary.Percent <= 25 ? Current.Low : Current.Icons);
         string state = percent + ":" + accent.ToArgb() + ":" + Current.NumericTrayIcon;
+        Icon previous = null;
         if (state != iconState)
         {
-            Icon previous = trayIcon;
+            previous = trayIcon;
             trayIcon = CreateTrayIcon(percent, accent, Current.NumericTrayIcon);
-            tray.Icon = trayIcon;
             iconState = state;
-            if (previous != null) previous.Dispose();
         }
         string hint = primary == null ? "Charge Strip" : "Charge Strip · " + primary.Level + " · " + Translate(primary.Name);
-        hint = hint.Substring(0, Math.Min(63, hint.Length));
-        if (tray.Text != hint) tray.Text = hint;
-        if (details.Visible) FillDetails();
+        tray.Update(trayIcon, hint);
+        if (previous != null) previous.Dispose();
+        FillDetails();
         if (editor != null) editor.SyncReadings();
     }
 
@@ -270,22 +270,21 @@ internal sealed class Strip : ApplicationContext
     internal void OpenDetails(Point point)
     {
         if (details.Visible) { details.Close(); return; }
-        if (dismissedByClick.HasValue && unchecked((uint)(Environment.TickCount - dismissedByClick.Value)) < 300) return;
-        FillDetails();
+        tray.PrepareMenu();
         details.Show(point, ToolStripDropDownDirection.AboveLeft);
     }
 
     private void FillDetails()
     {
+        details.SuspendLayout();
         while (details.Items.Count > 0)
         {
             var item = details.Items[0];
             details.Items.RemoveAt(0);
             item.Dispose();
         }
-        details.BackColor = StripSettings.ColorOf(Current.Background);
+        details.BackColor = StripSettings.PopupColor(Current.Background, Current.Alpha);
         details.ForeColor = StripSettings.ColorOf(Current.Text);
-        details.Opacity = Math.Max(.35, Current.Alpha / 100.0);
         var header = new ToolStripMenuItem("Charge Strip  ⚙", null, (sender, args) => OpenSettings());
         header.Font = popupHeaderFont;
         details.Items.Add(header);
@@ -304,6 +303,7 @@ internal sealed class Strip : ApplicationContext
             details.Items.Add(new ToolStripLabel(Translate("Оновлено о ") + refreshed.Value.ToString("HH:mm:ss")) { ForeColor = Muted });
         details.Items.Add(new ToolStripSeparator());
         details.Items.Add(Translate("Оновити"), null, async (sender, args) => await RefreshReadings());
+        details.ResumeLayout();
     }
 
     private sealed class TrayRow : ToolStripLabel
@@ -370,7 +370,6 @@ internal sealed class Strip : ApplicationContext
             inputTimer.Dispose();
             details.Dispose();
             popupHeaderFont.Dispose();
-            tray.Visible = false;
             tray.Dispose();
             trayMenu.Dispose();
             if (trayIcon != null) trayIcon.Dispose();
@@ -381,6 +380,13 @@ internal sealed class Strip : ApplicationContext
 
 internal static class Native
 {
+    internal static void RoundCorners(IntPtr window)
+    {
+        int preference = 2;
+        DwmSetWindowAttribute(window, 33, ref preference, sizeof(int));
+    }
+
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, uint attribute, ref int value, uint size);
     [DllImport("user32.dll")] internal static extern bool SetProcessDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] internal static extern bool DestroyIcon(IntPtr icon);
 }

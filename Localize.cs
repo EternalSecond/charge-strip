@@ -24,7 +24,7 @@ internal static class Localize
         { "Палітра…", new[] { "Палитра…", "Pick color…" } },
         { "Палітра", new[] { "Палитра", "Color picker" } },
         { "Запускати разом із Windows", new[] { "Запускать вместе с Windows", "Run with Windows" } },
-        { "Кнопка Charge біля трея", new[] { "Кнопка Charge рядом с треем", "Charge button beside the tray" } },
+        { "Показувати число на іконці трея", new[] { "Показывать число на значке в трее", "Show a number on the tray icon" } },
         { "Попередній перегляд трея", new[] { "Предпросмотр трея", "System tray preview" } },
         { "Пристрої в треї", new[] { "Устройства в трее", "Devices in the tray" } },
         { "Вище", new[] { "Выше", "Move up" } },

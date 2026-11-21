@@ -42,7 +42,6 @@ internal sealed class Strip : ApplicationContext
     private static readonly Color Muted = Color.FromArgb(174, 183, 196);
     private readonly ContextMenuStrip details = new ContextMenuStrip();
     private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
-    private readonly LauncherButton launcher;
     private readonly NotifyIcon tray = new NotifyIcon();
     private readonly Font popupHeaderFont = new Font("Segoe UI", 10, FontStyle.Bold);
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 12000 };
@@ -63,7 +62,6 @@ internal sealed class Strip : ApplicationContext
     public Strip(EventWaitHandle openRequest, bool launchEditor)
     {
         saved = StripSettings.Load() ?? new StripSettings();
-        launcher = new LauncherButton(this);
         details.ShowImageMargin = false;
         details.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
         details.ForeColor = TextColor;
@@ -85,10 +83,10 @@ internal sealed class Strip : ApplicationContext
         trayMenu.Opening += (sender, args) => details.Close();
 
         ApplySettings();
+        tray.Visible = true;
         bool initialRead = true;
         inputTimer.Tick += async (sender, args) =>
         {
-            SyncLauncher();
             if (launchEditor || openRequest.WaitOne(0))
             {
                 launchEditor = false;
@@ -119,56 +117,64 @@ internal sealed class Strip : ApplicationContext
         }
         var readings = Readings;
         BatteryReading primary = readings.FirstOrDefault();
-        string level = primary == null ? "—" : primary.Level.TrimEnd('%');
+        int? percent = primary == null ? null : primary.Percent;
         Color accent = StripSettings.ColorOf(primary != null && primary.Percent <= 25 ? Current.Low : Current.Icons);
-        string state = level + ":" + accent.ToArgb();
+        string state = percent + ":" + accent.ToArgb() + ":" + Current.NumericTrayIcon;
         if (state != iconState)
         {
             Icon previous = trayIcon;
-            trayIcon = CreateTrayIcon(level, accent);
+            trayIcon = CreateTrayIcon(percent, accent, Current.NumericTrayIcon);
             tray.Icon = trayIcon;
             iconState = state;
             if (previous != null) previous.Dispose();
         }
-        string hint = primary == null ? "Charge Strip" : Translate(primary.Name) + " · " + primary.Level;
+        string hint = primary == null ? "Charge Strip" : "Charge Strip · " + primary.Level + " · " + Translate(primary.Name);
         hint = hint.Substring(0, Math.Min(63, hint.Length));
         if (tray.Text != hint) tray.Text = hint;
-        SyncLauncher();
-        launcher.RefreshAppearance();
         if (details.Visible) FillDetails();
         if (editor != null) editor.SyncReadings();
     }
 
-    private void SyncLauncher()
-    {
-        bool showTray = !launcher.UpdatePlacement();
-        if (tray.Visible != showTray) tray.Visible = showTray;
-    }
-
-    internal void SaveLauncherOffset(int offset)
-    {
-        if (draft != null) draft.LauncherOffset = offset;
-        else
-        {
-            var candidate = saved.Copy();
-            candidate.LauncherOffset = offset;
-            if (Save(candidate)) saved = candidate;
-        }
-        ApplySettings();
-    }
-
-    internal static Icon CreateTrayIcon(string level, Color accent)
+    internal static Icon CreateTrayIcon(int? percent, Color accent, bool numeric)
     {
         using (var bitmap = new Bitmap(32, 32))
-        using (var g = Graphics.FromImage(bitmap))
-        using (var font = new Font("Segoe UI", level.Length > 2 ? 15 : 21, FontStyle.Bold, GraphicsUnit.Pixel))
-        using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+        using (var graphics = Graphics.FromImage(bitmap))
         using (var ink = new SolidBrush(accent))
-        using (var outline = new SolidBrush(Color.FromArgb(225, 20, 25, 32)))
+        using (var outline = new Pen(accent, 2.5f))
         {
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            g.DrawString(level, font, outline, new RectangleF(0, 2, 32, 32), format);
-            g.DrawString(level, font, ink, new RectangleF(0, 0, 32, 32), format);
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            if (numeric)
+            {
+                string value = percent.HasValue ? percent.Value.ToString() : "—";
+                using (var font = new Font("Segoe UI", value.Length > 2 ? 15 : 21, FontStyle.Bold, GraphicsUnit.Pixel))
+                using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                {
+                    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    graphics.DrawString(value, font, ink, new RectangleF(0, 0, 32, 32), format);
+                }
+            }
+            else
+            {
+                using (var shell = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    shell.AddArc(3, 8, 6, 6, 180, 90);
+                    shell.AddArc(20, 8, 6, 6, 270, 90);
+                    shell.AddArc(20, 18, 6, 6, 0, 90);
+                    shell.AddArc(3, 18, 6, 6, 90, 90);
+                    shell.CloseFigure();
+                    graphics.DrawPath(outline, shell);
+                }
+                graphics.DrawLine(outline, 29, 13, 29, 19);
+                if (percent.HasValue)
+                {
+                    float width = 17 * percent.Value / 100f;
+                    if (width > 0) graphics.FillRectangle(ink, 6, 11, width, 10);
+                }
+                else
+                {
+                    graphics.DrawLine(outline, 11, 16, 18, 16);
+                }
+            }
             IntPtr handle = bitmap.GetHicon();
             try { using (var borrowed = Icon.FromHandle(handle)) return (Icon)borrowed.Clone(); }
             finally { Native.DestroyIcon(handle); }
@@ -259,12 +265,6 @@ internal sealed class Strip : ApplicationContext
             ApplySettings();
         }
         finally { polling = false; }
-    }
-
-    internal void OpenActions(Point point)
-    {
-        details.Close();
-        trayMenu.Show(point, ToolStripDropDownDirection.AboveLeft);
     }
 
     internal void OpenDetails(Point point)
@@ -368,7 +368,6 @@ internal sealed class Strip : ApplicationContext
             if (editor != null) editor.Dispose();
             timer.Dispose();
             inputTimer.Dispose();
-            launcher.Dispose();
             details.Dispose();
             popupHeaderFont.Dispose();
             tray.Visible = false;

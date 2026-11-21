@@ -1,6 +1,6 @@
 ﻿# Charge Strip
 
-A portable Windows 11 battery monitor for headsets, mice, and other devices. Click the compact **Charge** button beside the system tray to see the battery readings for your selected devices.
+A portable Windows 11 battery monitor for headsets, mice, and other devices. Click its battery icon in the system tray to see the readings for your selected devices.
 
 [**Download for Windows 11 x64**](https://github.com/EternalSecond/charge-strip/releases/latest/download/Charge-Strip-Windows-x64.zip) · [Release notes and checksum](https://github.com/EternalSecond/charge-strip/releases/latest) · [Changelog](CHANGELOG.md)
 
@@ -11,21 +11,20 @@ A portable Windows 11 battery monitor for headsets, mice, and other devices. Cli
 ## Install and run
 
 1. Download **Charge-Strip-Windows-x64.zip** and extract it to a folder you plan to keep.
-2. Open **ChargeStrip.exe**. Look for the **Charge** button near the right side of the taskbar. You can drag it horizontally to fit the space beside your media controls.
-3. Right-click **Charge** and select **Settings**, or launch **Open Settings.cmd**. The launcher reuses the running instance.
+2. Open **ChargeStrip.exe**. Look for the battery icon in the notification area beside the clock. If Windows puts it under the **Show hidden icons** caret, drag it into the visible notification area.
+3. Right-click the battery icon and select **Settings**, or launch **Open Settings.cmd**. The launcher reuses the running instance.
 
 The portable executable is unsigned. Windows may display a publisher warning. To verify your download, run `Get-FileHash .\Charge-Strip-Windows-x64.zip -Algorithm SHA256` in PowerShell and compare it with **SHA256SUMS.txt** on the release page.
 
-## Use the Charge button
+## Use the system tray
 
 | Action | Result |
 | --- | --- |
-| Left-click Charge | Open or close the battery list |
-| Hover over Charge | See the first selected device and its reading |
-| Right-click Charge | Open Settings, refresh, or exit |
-| Drag Charge | Reposition the button on the main taskbar |
-| Turn off **Charge button beside the tray** | Use the numeric tray icon and its right-click menu for Settings, Refresh, and Exit |
-| Check devices, use the arrows and set a limit | Choose which readings appear in the list. The first selected device supplies the number in tray-only mode. |
+| Left-click the battery icon | Open the battery list |
+| Hover over the icon | See the first selected device and its percentage |
+| Right-click the icon | Open Settings, refresh, or exit |
+| Check devices, use the arrows and set a limit | Choose which readings appear. The first selected device drives the tray icon. |
+| Enable **Show a number on the tray icon** | Use a percentage instead of a filled battery symbol |
 | Change display mode | Show icons and percentages, icons only, or percentages only |
 | Change scale, spacing, colors or opacity | Adjust the battery flyout and tray icon colors |
 | Enable **Run with Windows** | Start Charge Strip when your Windows account signs in |
@@ -49,7 +48,7 @@ A dash means a detected device has no available reading. Check that the device i
 
 Preferences are stored per user in `%LOCALAPPDATA%\Charge Strip\settings.xml`. Charge Strip reads battery data locally and has no telemetry.
 
-To update, quit Charge Strip and extract the new files into the same folder. To exit, right-click the Charge button or tray icon and select Exit. To remove it, turn off **Run with Windows**, save, exit the app, then delete the extracted folder. Remove the separate preferences file if you also want to clear your layout and colors.
+To update, quit Charge Strip and extract the new files into the same folder. To exit, right-click the tray icon and select Exit. To remove it, turn off **Run with Windows**, save, exit the app, then delete the extracted folder. Remove the separate preferences file if you also want to clear your layout and colors.
 
 ## Build from source
 
@@ -62,7 +61,7 @@ Use Windows 11 x64 and the included .NET Framework compiler. Run these commands 
 | `"Start Charge Strip.cmd" /build` | Rebuild and launch. Exit any running copy first. |
 | `"Start Charge Strip.cmd" /package` | Build the portable ZIP and SHA-256 checksum in `build\` |
 
-Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the tray icon, popup, and startup. `LauncherButton.cs` handles the movable Charge button. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
+Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the tray icon, popup, and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
 
 ### Protocol references
 

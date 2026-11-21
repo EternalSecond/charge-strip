@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## 0.5.1
+
+- Use the Windows notification area for all system tray display modes. Removed the floating Charge button.
+- Added a battery icon with an optional numeric mode.
+
 ## 0.5.0
 
 - Added a compact, draggable Charge button next to the system tray.

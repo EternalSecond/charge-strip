@@ -65,3 +65,7 @@ Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the o
 - [SteelSeries Arctis HID protocol](https://github.com/TimP4w/HaloDaemon-plugins/blob/main/steelseries_arctis/docs/protocol.md)
 - [HyperX Pulsefire Haste 2 battery protocol](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/blob/main/docs/hyperx_haste_2.md)
 - [HyperX Cloud Alpha HID battery protocol](https://github.com/FedeltaMedia/hyperx-cloud-alpha-battery#technical-details)
+
+## License
+
+Charge Strip is available under the [MIT License](LICENSE).

@@ -24,10 +24,10 @@ The portable executable is unsigned. Windows may display a publisher warning. To
 | Check devices, use the arrows and set a limit | Choose the visible readings, their order and how many appear |
 | Change display mode | Show icons and percentages, icons only, or percentages only |
 | Change scale, spacing, colors or opacity | Preview appearance changes immediately |
-| Enable **Запускати разом із Windows** | Start the strip when your Windows account signs in |
-| **Зберегти** / **Скасувати** | Save / cancel changes |
+| Enable **Run with Windows** | Start the strip when your Windows account signs in |
+| Save / Cancel | Keep / revert changes |
 
-The current app interface is in Ukrainian. Readings refresh in the background about every 12 seconds.
+Choose **УКР**, **РУС**, or **ENG** at the top of Settings to switch between Ukrainian, Russian, and English. The interface updates immediately. Select **Save** to keep the language, or **Cancel** to revert. Readings refresh in the background about every 12 seconds.
 
 ## Device compatibility
 
@@ -45,7 +45,7 @@ A dash means a detected device has no available reading. Check that the device i
 
 Preferences are stored per user in `%LOCALAPPDATA%\Charge Strip\settings.xml`. Charge Strip reads battery data locally and has no telemetry.
 
-To update, quit Charge Strip using its notification-area menu and extract the new files into the same folder. To remove it, turn off **Запускати разом із Windows**, save, exit the app, then delete the extracted folder. Remove the separate preferences file if you also want to clear your layout and colors.
+To update, quit Charge Strip using its notification-area menu and extract the new files into the same folder. To remove it, turn off **Run with Windows**, save, exit the app, then delete the extracted folder. Remove the separate preferences file if you also want to clear your layout and colors.
 
 ## Build from source
 
@@ -58,7 +58,7 @@ Use Windows 11 x64 and the included .NET Framework compiler. Run these commands 
 | `"Start Charge Strip.cmd" /build` | Rebuild and launch. Exit any running copy first. |
 | `"Start Charge Strip.cmd" /package` | Build the portable ZIP and SHA-256 checksum in `build\` |
 
-Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the overlay and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID.
+Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the overlay and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
 
 ### Protocol references
 

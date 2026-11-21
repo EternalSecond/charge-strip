@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## 0.3.0
+
+- Added a language selector for Ukrainian, Russian, and English in Settings.
+- Localized the editor, tray and battery menus, device labels, and charge statuses.
+- Saved the selected language with the other preferences.
+
 ## 0.2.1
 
 - Added a documented, one-command build for the portable ZIP and its SHA-256 checksum.

@@ -49,6 +49,7 @@ internal sealed class Strip : Form
     private readonly Icon trayIcon;
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 12000 };
     private readonly System.Windows.Forms.Timer inputTimer = new System.Windows.Forms.Timer { Interval = 150 };
+    private string menuLanguage;
     private List<BatteryReading> rows = new List<BatteryReading>();
     private DateTime? refreshed;
     private StripSettings saved, draft;
@@ -175,9 +176,20 @@ internal sealed class Strip : Form
         return size;
     }
 
+    internal string Translate(string text) { return Localize.Text(Current.Language, text); }
+
     internal void ApplySettings()
     {
         if (IsDisposed || Capture) return;
+        if (menuLanguage != Current.Language)
+        {
+            menuLanguage = Current.Language;
+            trayMenu.Items[0].Text = Translate("Налаштування");
+            trayMenu.Items[1].Text = Translate("Оновити");
+            trayMenu.Items[2].Text = Translate("Вийти");
+            tip.SetToolTip(this, Text);
+            if (details.Visible) FillDetails();
+        }
         ApplyPosition();
         if (editor != null) editor.SyncPosition();
     }
@@ -243,7 +255,7 @@ internal sealed class Strip : Form
 
     internal void ResetSettings()
     {
-        draft = new StripSettings();
+        draft = new StripSettings { Language = draft.Language };
         ApplySettings();
     }
 
@@ -270,7 +282,7 @@ internal sealed class Strip : Form
         catch (Exception error)
         {
             if (!StartupRegistration.IsAccessError(error)) throw;
-            MessageBox.Show(editor, "Не вдалося змінити автозапуск Windows.", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(editor, Translate("Не вдалося змінити автозапуск Windows."), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
 
@@ -284,7 +296,7 @@ internal sealed class Strip : Form
             catch (Exception error)
             {
                 if (!StartupRegistration.IsAccessError(error)) throw;
-                MessageBox.Show(editor, "Не вдалося відновити попередній стан автозапуску.", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(editor, Translate("Не вдалося відновити попередній стан автозапуску."), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             return false;
         }
@@ -308,7 +320,7 @@ internal sealed class Strip : Form
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
         catch (InvalidOperationException) { }
-        MessageBox.Show(editor != null ? (IWin32Window)editor : this, "Не вдалося зберегти налаштування.", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(editor != null ? (IWin32Window)editor : this, Translate("Не вдалося зберегти налаштування."), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         return false;
     }
 
@@ -351,7 +363,7 @@ internal sealed class Strip : Form
         {
             var visible = Readings;
             int cell = (int)Math.Floor((e.X / scale - 13) / (StripArtwork.CellWidth(Current) + Current.Gap));
-            string title = cell >= 0 && cell < Math.Min(visible.Count, Current.MaxDevices) ? visible[cell].Name : Text;
+            string title = cell >= 0 && cell < Math.Min(visible.Count, Current.MaxDevices) ? Translate(visible[cell].Name) : Text;
             if (tip.GetToolTip(this) != title) tip.SetToolTip(this, title);
             return;
         }
@@ -399,17 +411,17 @@ internal sealed class Strip : Form
             item.Dispose();
         }
         if (rows.Count == 0)
-            details.Items.Add(new ToolStripLabel(refreshed.HasValue ? "Немає доступних показників заряду" : "Зчитування показників…"));
+            details.Items.Add(new ToolStripLabel(Translate(refreshed.HasValue ? "Немає доступних показників заряду" : "Зчитування показників…")));
         foreach (BatteryReading row in rows)
         {
-            string status = row.Percent.HasValue ? row.Level + " · " + row.Status : row.Status;
-            details.Items.Add(new ToolStripLabel(row.Name + Environment.NewLine + status) { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(3, 5, 12, 5) });
+            string status = row.Percent.HasValue ? row.Level + " · " + Translate(row.Status) : Translate(row.Status);
+            details.Items.Add(new ToolStripLabel(Translate(row.Name) + Environment.NewLine + status) { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(3, 5, 12, 5) });
         }
         if (refreshed.HasValue)
-            details.Items.Add(new ToolStripLabel("Оновлено о " + refreshed.Value.ToString("HH:mm:ss")) { ForeColor = Muted });
+            details.Items.Add(new ToolStripLabel(Translate("Оновлено о ") + refreshed.Value.ToString("HH:mm:ss")) { ForeColor = Muted });
         details.Items.Add(new ToolStripSeparator());
-        details.Items.Add("Оновити", null, async (sender, args) => await RefreshReadings());
-        details.Items.Add("Налаштування", null, (sender, args) => OpenSettings());
+        details.Items.Add(Translate("Оновити"), null, async (sender, args) => await RefreshReadings());
+        details.Items.Add(Translate("Налаштування"), null, (sender, args) => OpenSettings());
     }
 
     private sealed class MenuColors : ProfessionalColorTable

@@ -20,6 +20,7 @@ public sealed class StripSettings
     public int Zoom = 100, Gap = 5, Radius = 8, Alpha = 85;
     public string[] HiddenDevices = new string[0], DeviceOrder = new string[0];
     public int MaxDevices = 5, DisplayMode;
+    public string Language = "uk";
 
     internal List<BatteryReading> Selected(IEnumerable<BatteryReading> readings)
     {
@@ -68,6 +69,7 @@ public sealed class StripSettings
                 settings.Gap = Clamp(settings.Gap, 0, 24);
                 settings.Radius = Clamp(settings.Radius, 0, 24);
                 settings.Alpha = Clamp(settings.Alpha, 0, 100);
+                if (Array.IndexOf(Localize.Languages, settings.Language) < 0) settings.Language = "uk";
                 settings.MaxDevices = Clamp(settings.MaxDevices, 1, 12);
                 settings.DisplayMode = Clamp(settings.DisplayMode, 0, 2);
                 settings.HiddenDevices = settings.HiddenDevices ?? new string[0];
@@ -217,7 +219,7 @@ internal static class StripArtwork
 internal sealed class SettingsWindow : Form
 {
     private readonly Strip strip;
-    private readonly ComboBox monitor = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 212, AccessibleName = "Монітор" };
+    private readonly ComboBox monitor = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190, AccessibleName = "Монітор" };
     private readonly NumericUpDown x = Number("X", 0, 100000), y = Number("Y", 0, 100000);
     private readonly NumericUpDown zoom = Number("Масштаб", 60, 175), gap = Number("Відступ", 0, 24),
         radius = Number("Кути", 0, 24), alpha = Number("Фон", 0, 100);
@@ -225,8 +227,11 @@ internal sealed class SettingsWindow : Form
     private readonly CheckedListBox devices = new CheckedListBox { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
     private readonly ComboBox displayMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
     private readonly NumericUpDown maxDevices = Number("Ліміт пристроїв", 1, 12);
+    private readonly ComboBox language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
+    private readonly List<Action<string>> captions = new List<Action<string>>();
     private readonly Button save = ButtonFor("Зберегти");
     private readonly Label error = new Label { AutoSize = true, ForeColor = Color.Firebrick };
+    private static readonly string[] ColorNames = { "Фон", "Текст", "Іконки", "Низький заряд" };
     private readonly TextBox[] hex = new TextBox[4];
     private readonly Button[] palette = new Button[4];
     private readonly Preview preview;
@@ -244,7 +249,7 @@ internal sealed class SettingsWindow : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(820, 535);
+        ClientSize = new Size(820, 572);
         BackColor = Color.FromArgb(24, 30, 41);
         ForeColor = Color.FromArgb(229, 237, 247);
         StartPosition = FormStartPosition.Manual;
@@ -252,9 +257,10 @@ internal sealed class SettingsWindow : Form
         Location = new Point(work.Left + Math.Max(0, (work.Width - Width) / 2),
             work.Top + Math.Max(0, (work.Height - Height) / 2));
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 2, RowCount = 2 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 2, RowCount = 3 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 338));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var column = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
@@ -274,17 +280,17 @@ internal sealed class SettingsWindow : Form
         column.Controls.Add(Line("Кути, px", radius));
         column.Controls.Add(Line("Непрозорість, %", alpha));
         column.Controls.Add(Heading("Кольори"));
-        string[] names = { "Фон", "Текст", "Іконки", "Низький заряд" };
-        for (int i = 0; i < names.Length; i++)
+
+        for (int i = 0; i < ColorNames.Length; i++)
         {
             int index = i;
-            hex[i] = new TextBox { Width = 99, MaxLength = 7, AccessibleName = names[i] + " HEX" };
+            hex[i] = new TextBox { Width = 99, MaxLength = 7, AccessibleName = ColorNames[i] + " HEX" };
             palette[i] = ButtonFor("Палітра…");
-            palette[i].AccessibleName = "Палітра — " + names[i];
+            palette[i].AccessibleName = "Палітра — " + ColorNames[i];
             var colorLine = new FlowLayoutPanel { AutoSize = true, Margin = Padding.Empty, WrapContents = false };
             colorLine.Controls.Add(hex[i]);
             colorLine.Controls.Add(palette[i]);
-            column.Controls.Add(Line(names[i], colorLine));
+            column.Controls.Add(Line(ColorNames[i], colorLine));
             hex[i].TextChanged += (sender, args) => AppearanceChanged();
             palette[i].Click += (sender, args) =>
             {
@@ -321,7 +327,7 @@ internal sealed class SettingsWindow : Form
         down.AccessibleName = "Нижче";
         up.Click += (sender, args) => MoveDevice(-1);
         down.Click += (sender, args) => MoveDevice(1);
-        displayMode.Items.AddRange(new object[] { "Іконка + %", "Тільки іконка", "Тільки %" });
+
         deviceActions.Controls.AddRange(new Control[] { up, down,
             new Label { Text = "Ліміт", AutoSize = true, Margin = new Padding(8, 8, 3, 0) }, maxDevices, displayMode });
         previewArea.Controls.Add(deviceActions);
@@ -335,18 +341,35 @@ internal sealed class SettingsWindow : Form
         };
         maxDevices.ValueChanged += (sender, args) => UpdateDeviceLayout();
         displayMode.SelectedIndexChanged += (sender, args) => UpdateDeviceLayout();
-        root.Controls.Add(column, 0, 0);
-        root.Controls.Add(previewArea, 1, 0);
+        language.Items.AddRange(Localize.Labels);
+        var languageRow = Line("Мова", language);
+        language.AccessibleName = "Мова";
+        languageRow.Margin = new Padding(0, 0, 0, 8);
+        root.Controls.Add(languageRow, 0, 0);
+        root.SetColumnSpan(languageRow, 2);
+        root.Controls.Add(column, 0, 1);
+        root.Controls.Add(previewArea, 1, 1);
 
         var footer = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
         var cancel = ButtonFor("Скасувати");
         cancel.DialogResult = DialogResult.Cancel;
         var defaults = ButtonFor("Скинути до стандартних");
         footer.Controls.AddRange(new Control[] { save, cancel, defaults, error });
-        root.Controls.Add(footer, 0, 1);
+        root.Controls.Add(footer, 0, 2);
         root.SetColumnSpan(footer, 2);
         Controls.Add(root);
         Style(root);
+        BindCaptions(root);
+        devices.FormattingEnabled = true;
+        devices.Format += (sender, args) => args.Value = Translate((string)args.ListItem);
+        language.SelectedIndexChanged += (sender, args) =>
+        {
+            if (loading || language.SelectedIndex < 0) return;
+            strip.Current.Language = Localize.Languages[language.SelectedIndex];
+            ApplyLanguage();
+            ValidateColors();
+            strip.ApplySettings();
+        };
         save.BackColor = Color.FromArgb(38, 95, 171);
         AcceptButton = save;
         CancelButton = cancel;
@@ -384,8 +407,8 @@ internal sealed class SettingsWindow : Form
         radius.Value = settings.Radius;
         alpha.Value = settings.Alpha;
         maxDevices.Value = settings.MaxDevices;
-        displayMode.SelectedIndex = settings.DisplayMode;
-        RebuildDevices(true);
+        language.SelectedIndex = Array.IndexOf(Localize.Languages, settings.Language);
+        ApplyLanguage();
         string[] colors = CurrentColors();
         for (int i = 0; i < hex.Length; i++) hex[i].Text = colors[i];
         loading = false;
@@ -403,7 +426,7 @@ internal sealed class SettingsWindow : Form
         {
             topology = signature;
             monitor.Items.Clear();
-            for (int i = 0; i < screens.Length; i++) monitor.Items.Add(new MonitorOption(screens[i], i + 1));
+            for (int i = 0; i < screens.Length; i++) monitor.Items.Add(new MonitorOption(screens[i], i + 1, strip.Current.Language));
         }
         Screen actual = strip.PositionScreen;
         for (int i = 0; i < monitor.Items.Count; i++)
@@ -414,6 +437,48 @@ internal sealed class SettingsWindow : Form
         loading = false;
         RebuildDevices(false);
         preview.Invalidate();
+    }
+
+    private string Translate(string text)
+    {
+        return Localize.Text(strip.Current.Language, text);
+    }
+
+    private void BindCaptions(Control parent)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            if (control is Label || control is ButtonBase)
+            {
+                string source = control.Text;
+                captions.Add(code => control.Text = Localize.Text(code, source));
+            }
+            string accessible = control.AccessibleName;
+            if (!string.IsNullOrEmpty(accessible))
+                captions.Add(code => control.AccessibleName = Localize.Text(code, accessible));
+            BindCaptions(control);
+        }
+    }
+
+    private void ApplyLanguage()
+    {
+        bool previous = loading;
+        loading = true;
+        string code = strip.Current.Language;
+        Text = Translate("Налаштування");
+        foreach (var caption in captions) caption(code);
+        for (int i = 0; i < hex.Length; i++)
+        {
+            string name = Translate(ColorNames[i]);
+            hex[i].AccessibleName = name + " HEX";
+            palette[i].AccessibleName = Translate("Палітра") + " — " + name;
+        }
+        displayMode.Items.Clear();
+        displayMode.Items.AddRange(new object[] { Translate("Іконка + %"), Translate("Тільки іконка"), Translate("Тільки %") });
+        displayMode.SelectedIndex = strip.Current.DisplayMode;
+        topology = null;
+        RebuildDevices(true);
+        loading = previous;
     }
 
     private void RebuildDevices(bool force)
@@ -499,7 +564,7 @@ internal sealed class SettingsWindow : Form
             valid &= correct;
             hex[i].BackColor = correct ? Color.FromArgb(35, 45, 61) : Color.FromArgb(99, 40, 50);
         }
-        error.Text = valid ? "" : "Формат #RRGGBB";
+        error.Text = valid ? "" : Translate("Формат #RRGGBB");
         save.Enabled = valid;
     }
 
@@ -546,7 +611,7 @@ internal sealed class SettingsWindow : Form
     private static Control Line(string text, Control control)
     {
         var line = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
-        line.Controls.Add(new Label { Text = text, Width = 103, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 1, 3, 0) });
+        line.Controls.Add(new Label { Text = text, Width = 128, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 1, 3, 0) });
         line.Controls.Add(control);
         return line;
     }
@@ -555,8 +620,9 @@ internal sealed class SettingsWindow : Form
     {
         internal readonly Screen Screen;
         private readonly int number;
-        internal MonitorOption(Screen screen, int index) { Screen = screen; number = index; }
-        public override string ToString() { return string.Format("{0} · {1} × {2}{3}", number, Screen.Bounds.Width, Screen.Bounds.Height, Screen.Primary ? " · основний" : ""); }
+        private readonly string language;
+        internal MonitorOption(Screen screen, int index, string code) { Screen = screen; number = index; language = code; }
+        public override string ToString() { return string.Format("{0} · {1} × {2}{3}", number, Screen.Bounds.Width, Screen.Bounds.Height, Screen.Primary ? " · " + Localize.Text(language, "основний") : ""); }
     }
 
     private sealed class Preview : Control

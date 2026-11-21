@@ -1,30 +1,32 @@
 ﻿# Charge Strip
 
-A portable Windows 11 taskbar overlay for headset, mouse and other battery readings. Choose the devices you want to see, then drag the strip beside your taskbar icons or media controls.
+A portable Windows 11 system tray battery monitor for headsets, mice, and other devices. The tray icon shows the percentage for the first device you select. Click it to see the readings for the rest.
 
 [**Download for Windows 11 x64**](https://github.com/EternalSecond/charge-strip/releases/latest/download/Charge-Strip-Windows-x64.zip) · [Release notes and checksum](https://github.com/EternalSecond/charge-strip/releases/latest) · [Changelog](CHANGELOG.md)
 
-![Charge Strip Settings in English, with the language selector, live preview, and device checklist](docs/settings-preview.png)
+![Charge Strip battery flyout with mouse and headset levels](docs/tray-flyout.png)
+
+[See the Settings window](docs/settings-preview.png)
 
 ## Install and run
 
 1. Download **Charge-Strip-Windows-x64.zip** and extract it to a folder you plan to keep.
-2. Open **ChargeStrip.exe**. The overlay appears near the taskbar.
-3. Right-click the overlay or open **Open Settings.cmd** to configure it. The launcher reuses the running instance.
+2. Open **ChargeStrip.exe**. Look for a number in the system tray near the clock. If Windows groups the icon under the **Show hidden icons** caret, you can drag it into the visible tray.
+3. Right-click the tray icon or open **Open Settings.cmd** to configure it. The launcher reuses the running instance.
 
 The portable executable is unsigned. Windows may display a publisher warning. To verify your download, run `Get-FileHash .\Charge-Strip-Windows-x64.zip -Algorithm SHA256` in PowerShell and compare it with **SHA256SUMS.txt** on the release page.
 
-## Customize your strip
+## Use the tray
 
 | Action | Result |
 | --- | --- |
-| Left-click or hover | See all detected devices in the list, or the name of the reading under the pointer |
-| Drag the strip or its preview | Move the overlay, including between monitors |
-| Set a monitor and X/Y | Place the strip at an exact offset from that monitor’s top-left corner |
-| Check devices, use the arrows and set a limit | Choose the visible readings, their order and how many appear |
+| Left-click the icon | Open the battery list |
+| Hover over the icon | See which device the number belongs to |
+| Right-click the icon | Open Settings, refresh, or exit |
+| Check devices, use the arrows and set a limit | Choose which readings appear in the list. The first selected device supplies the tray number. |
 | Change display mode | Show icons and percentages, icons only, or percentages only |
-| Change scale, spacing, colors or opacity | Preview appearance changes immediately |
-| Enable **Run with Windows** | Start the strip when your Windows account signs in |
+| Change scale, spacing, colors or opacity | Adjust the battery flyout and tray icon colors |
+| Enable **Run with Windows** | Start the tray icon when your Windows account signs in |
 | Save / Cancel | Keep / revert changes |
 
 Choose **УКР**, **РУС**, or **ENG** at the top of Settings to switch between Ukrainian, Russian, and English. The interface updates immediately. Select **Save** to keep the language, or **Cancel** to revert. Readings refresh in the background about every 12 seconds.
@@ -53,12 +55,12 @@ Use Windows 11 x64 and the included .NET Framework compiler. Run these commands 
 
 | Command | Result |
 | --- | --- |
-| `"Start Charge Strip.cmd"` | Build if needed and launch the overlay |
+| `"Start Charge Strip.cmd"` | Build if needed and start the tray app |
 | `"Start Charge Strip.cmd" /settings` | Build if needed and open Settings |
 | `"Start Charge Strip.cmd" /build` | Rebuild and launch. Exit any running copy first. |
 | `"Start Charge Strip.cmd" /package` | Build the portable ZIP and SHA-256 checksum in `build\` |
 
-Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the overlay and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
+Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the tray icon, popup, and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
 
 ### Protocol references
 

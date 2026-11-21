@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## 0.4.0
+
+- Replaced the floating strip with a battery percentage icon in the Windows system tray.
+- Added a click-to-open battery list and a live tray preview in Settings.
+- Preserved device order, visibility, language, appearance colors, and startup preferences.
+
 ## 0.3.1
 
 - Refreshed the portable ZIP with the English Settings screenshot and current documentation.

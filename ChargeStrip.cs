@@ -59,7 +59,8 @@ internal sealed class Strip : Form
     private int? legacyOffset;
 
     internal StripSettings Current { get { return draft ?? saved; } }
-    internal IList<BatteryReading> Readings { get { return rows; } }
+    internal IList<BatteryReading> AllReadings { get { return rows; } }
+    internal IList<BatteryReading> Readings { get { return Current.Selected(rows); } }
     internal Screen PositionScreen { get; private set; }
     protected override bool ShowWithoutActivation { get { return true; } }
 
@@ -186,7 +187,7 @@ internal sealed class Strip : Form
         var settings = Current;
         Screen requested = Screen.AllScreens.FirstOrDefault(screen => screen.DeviceName == settings.Monitor);
         Screen screenToUse = requested ?? Screen.PrimaryScreen;
-        Size size = SizeFor(screenToUse, rows.Count, settings, out scale);
+        Size size = SizeFor(screenToUse, Readings.Count, settings, out scale);
         Point target = settings.Automatic || requested == null
             ? AutomaticPosition(screenToUse, size, settings == saved ? legacyOffset : null)
             : new Point(screenToUse.Bounds.Left + settings.X, screenToUse.Bounds.Top + settings.Y);
@@ -205,7 +206,7 @@ internal sealed class Strip : Form
         Bounds = new Rectangle(position, size);
         using (var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb))
         {
-            using (var graphics = Graphics.FromImage(bitmap)) StripArtwork.Draw(graphics, rows, Current, scale);
+            using (var graphics = Graphics.FromImage(bitmap)) StripArtwork.Draw(graphics, Readings, Current, scale);
             Native.Present(Handle, bitmap, position, size);
             if (!details.Visible && !trayMenu.Visible) Native.KeepAboveTaskbar(Handle, Bounds);
         }
@@ -348,8 +349,9 @@ internal sealed class Strip : Form
         base.OnMouseMove(e);
         if (!Capture || e.Button != MouseButtons.Left)
         {
-            int cell = (int)Math.Floor((e.X / scale - 13) / (51 + Current.Gap));
-            string title = cell >= 0 && cell < Math.Min(rows.Count, StripArtwork.MaxVisible) ? rows[cell].Name : Text;
+            var visible = Readings;
+            int cell = (int)Math.Floor((e.X / scale - 13) / (StripArtwork.CellWidth(Current) + Current.Gap));
+            string title = cell >= 0 && cell < Math.Min(visible.Count, Current.MaxDevices) ? visible[cell].Name : Text;
             if (tip.GetToolTip(this) != title) tip.SetToolTip(this, title);
             return;
         }
@@ -359,7 +361,7 @@ internal sealed class Strip : Form
         if (!dragging && Math.Max(Math.Abs(dx), Math.Abs(dy)) < 4) return;
         dragging = true;
         PositionScreen = Screen.FromPoint(pointer);
-        Size size = SizeFor(PositionScreen, rows.Count, Current, out scale);
+        Size size = SizeFor(PositionScreen, Readings.Count, Current, out scale);
         Render(KeepVisible(new Point(origin.X + dx, origin.Y + dy), size, PositionScreen.Bounds), size);
         if (draft != null)
         {

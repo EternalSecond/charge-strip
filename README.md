@@ -1,43 +1,48 @@
 ﻿# Charge Strip
 
-Невелика смужка для Windows 11, яка показує заряд пристроїв поруч із системним треєм або плеєром. Написана на C# з Windows Forms і працює локально.
+Charge Strip is a compact Windows 11 battery overlay for wireless peripherals. Drag it into a free space beside the taskbar icons or media controls. Open Settings to choose which devices appear, in what order, and how much space the strip uses.
 
-## Запуск
+## Download and run
 
-1. Завантажте або клонуйте репозиторій на ПК з 64-розрядною Windows 11.
-2. Запустіть `Start Charge Strip.cmd`. Під час першого запуску файл збере програму в `build\ChargeStrip.exe` вбудованим компілятором .NET Framework.
-3. Клацніть смужку правою кнопкою миші, щоб відкрити **Налаштування**. Також можна виконати `"Start Charge Strip.cmd" /settings` у командному рядку Windows або створити ярлик на `build\ChargeStrip.exe --settings`. Цей режим відкриває редактор у вже запущеному екземплярі.
+1. Open [Releases](https://github.com/EternalSecond/charge-strip/releases) and download the latest **Charge-Strip-Windows-x64.zip**.
+2. Extract the entire ZIP to a folder you plan to keep.
+3. Run **ChargeStrip.exe**. To open the editor, right-click the strip or run **Open Settings.cmd** from the same folder. The command works while the strip is already running.
 
-Звичайний запуск показує лише смужку. Щоб зібрати свіжий EXE після правок, закрийте програму та виконайте `"Start Charge Strip.cmd" /build`.
+The repository is private. Release downloads require an account with repository access. The portable build is unsigned. Windows may show a publisher prompt.
 
-## Керування
+## Everyday use
 
-- Перетягніть смужку мишею або задайте монітор і координати X/Y у редакторі. Координати відраховуються від верхнього лівого кута монітора. **Скинути позицію** повертає автоматичне розміщення біля трея.
-- У редакторі є живе прев’ю, масштаб, відступи, радіус кутів, непрозорість фону й палітра з полями `#RRGGBB`. **Зберегти** застосовує зміни. **Скасувати** повертає попередні параметри.
-- Лівий клік відкриває список пристроїв. При наведенні видно назву показника. Дані оновлюються у фоні кожні 12 секунд.
-- **Запускати разом із Windows** створює ярлик у папці Startup поточного користувача. Вхід у Windows запускає смужку у звичайному режимі. Параметри зберігаються у `%LOCALAPPDATA%\Charge Strip\settings.xml`.
-
-## Джерела заряду
-
-| Джерело | Підтримка |
+| Action | What it does |
 | --- | --- |
-| **SteelSeries Arctis Nova Pro Wireless** через USB-базу 2,4 ГГц | USB HID для бази `1038:12E0`. Окремі показники гарнітури та акумулятора в базі. Показники дискретні. |
-| **Системна батарея** | Стан і рівень, які повертає Windows. |
-| **Bluetooth** | Рівень для пристроїв, які публікують відсоток у Windows. Сумісність залежить від пристрою та способу підключення. |
+| Left-click the strip | Show all detected devices and their battery status |
+| Right-click the strip | Open Settings |
+| Drag the strip or its preview | Move the overlay, including between monitors |
+| Use the Devices list in Settings | Check what to show, reorder devices with the arrows, and set a limit of 1–12 |
+| Change display mode | Show icons and percentages, icons only, or percentages only |
+| Enable Run with Windows | Add a per-user Startup shortcut that launches the strip |
+| Save or Cancel | Keep the changes or restore the previous layout and appearance |
 
-Якщо базу SteelSeries виявлено, а показника немає, у списку відображається **«Заряд недоступний»**.
+You can also enter exact monitor-relative coordinates, change scale, gap and corner radius, and adjust colors and background opacity. The application stores preferences in `%LOCALAPPDATA%\Charge Strip\settings.xml`. It refreshes readings in the background about every 12 seconds.
 
-## Що перевірено
+## Battery support
 
-- Обидва показники Arctis звірено з локальним SteelSeries Engine. Серед збігів — 25% і 100%, потім 100% і 37%. Фонове оновлення перевірено на живій базі.
-- На Windows 11 перевірено кліки, перетягування, X/Y, другий монітор, попередній перегляд, HEX, скасування й відновлення параметрів після перезапуску.
-- Повторні звичайні запуски не відкривали редактор протягом 76-секундного спостереження. Окремий запуск налаштувань відкрив редактор в існуючому процесі. Ярлик Startup перевірено прямим запуском. Цикл виходу й повторного входу окремо не перевірявся.
-- На тестовому ПК не було системної батареї, а підключеного Bluetooth-пристрою з доступним зарядом не виявлено.
+| Device | Source and verification |
+| --- | --- |
+| SteelSeries Arctis Nova Pro Wireless | Hardware-tested with the `1038:12E0` 2.4 GHz USB base. Displays the headset and the spare battery separately. Both readings were compared with SteelSeries Engine. |
+| HyperX Pulsefire Haste 2 Wireless | Hardware-tested with the `03F0:0D97` USB receiver. The app read the percentage and charging state during a live charge. The `03F0:0F98` variant uses the same documented query. |
+| HyperX Cloud Alpha Wireless | The `03F0:098D` receiver was detected on the test machine. The battery query returned no reading there. |
+| PC battery and Bluetooth accessories | Uses the Windows battery data if the device publishes it. Bluetooth compatibility depends on the model and connection mode. |
 
-## Код
+Brand names alone do not determine compatibility. A detected receiver can appear with an unavailable reading when the device is asleep, off, or does not answer.
 
-- `ChargeStrip.cs` — вікно смужки, режим запуску й фонове оновлення.
-- `Settings.cs` — редактор, прев’ю, збереження й інтеграція з Startup.
-- `Batteries.cs` — джерела даних Windows і USB HID.
+## Build from source
 
-[Опис HID-протоколу бази](https://github.com/TimP4w/HaloDaemon-plugins/blob/main/steelseries_arctis/docs/protocol.md) · [Довідка SteelSeries про заряд](https://support.steelseries.com/hc/en-us/articles/360049205612-How-do-I-know-the-battery-level-of-my-headset-and-how-do-I-charge-it)
+Use 64-bit Windows 11 with the built-in .NET Framework compiler. Run `Start Charge Strip.cmd` from the repository root to build and launch. You can pass `/settings` to open the editor. To rebuild after changes, exit Charge Strip and run the command with `/build`.
+
+Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the taskbar overlay and single-instance startup. `Settings.cs` handles rendering, the editor and persistence. `Batteries.cs` reads Windows device properties and sends read-only battery queries to supported USB HID devices.
+
+## Protocol references
+
+- [SteelSeries Arctis HID protocol](https://github.com/TimP4w/HaloDaemon-plugins/blob/main/steelseries_arctis/docs/protocol.md)
+- [HyperX Pulsefire Haste 2 battery protocol](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/blob/main/docs/hyperx_haste_2.md)
+- [HyperX Cloud Alpha HID battery protocol](https://github.com/FedeltaMedia/hyperx-cloud-alpha-battery#technical-details)

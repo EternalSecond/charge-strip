@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Forms;
 using System.Xml.Serialization;
@@ -17,6 +18,23 @@ public sealed class StripSettings
     public bool Automatic = true;
     public int X, Y;
     public int Zoom = 100, Gap = 5, Radius = 8, Alpha = 85;
+    public string[] HiddenDevices = new string[0], DeviceOrder = new string[0];
+    public int MaxDevices = 5, DisplayMode;
+
+    internal List<BatteryReading> Selected(IEnumerable<BatteryReading> readings)
+    {
+        return Ordered(readings).Where(row => !HiddenDevices.Contains(row.Name)).ToList();
+    }
+
+    internal IEnumerable<BatteryReading> Ordered(IEnumerable<BatteryReading> readings)
+    {
+        return readings.OrderBy(row =>
+        {
+            int index = Array.IndexOf(DeviceOrder, row.Name);
+            return index < 0 ? int.MaxValue : index;
+        });
+    }
+
     public string Background = "#1F232B", Text = "#F0F3F7", Icons = "#9BE1C2", Low = "#FFBD78";
 
     internal StripSettings Copy() { return (StripSettings)MemberwiseClone(); }
@@ -50,6 +68,10 @@ public sealed class StripSettings
                 settings.Gap = Clamp(settings.Gap, 0, 24);
                 settings.Radius = Clamp(settings.Radius, 0, 24);
                 settings.Alpha = Clamp(settings.Alpha, 0, 100);
+                settings.MaxDevices = Clamp(settings.MaxDevices, 1, 12);
+                settings.DisplayMode = Clamp(settings.DisplayMode, 0, 2);
+                settings.HiddenDevices = settings.HiddenDevices ?? new string[0];
+                settings.DeviceOrder = settings.DeviceOrder ?? new string[0];
                 var defaults = new StripSettings();
                 Color color;
                 if (!TryColor(settings.Background, out color)) settings.Background = defaults.Background;
@@ -118,11 +140,14 @@ internal static class StartupRegistration
 
 internal static class StripArtwork
 {
-    internal const int MaxVisible = 5;
+    internal static int CellWidth(StripSettings settings)
+    {
+        return settings.DisplayMode == 1 ? 25 : settings.DisplayMode == 2 ? 38 : 54;
+    }
     internal static Size Measure(int count, StripSettings settings, float scale)
     {
-        int shown = Math.Max(1, Math.Min(count, MaxVisible));
-        return new Size((int)Math.Ceiling((24 + shown * 51 + (shown - 1) * settings.Gap + (count > MaxVisible ? 26 : 0)) * scale),
+        int shown = Math.Max(1, Math.Min(count, settings.MaxDevices));
+        return new Size((int)Math.Ceiling((24 + shown * CellWidth(settings) + (shown - 1) * settings.Gap + (count > settings.MaxDevices ? 26 : 0)) * scale),
             (int)Math.Ceiling(32 * scale));
     }
 
@@ -136,8 +161,11 @@ internal static class StripArtwork
         Color text = StripSettings.ColorOf(settings.Text);
         Color icon = StripSettings.ColorOf(settings.Icons);
         Color low = StripSettings.ColorOf(settings.Low);
+        Color background = StripSettings.ColorOf(settings.Background);
+        int opacity = Math.Max(1, (settings.Alpha * 255 + 50) / 100);
         using (var path = Outline(edge, settings.Radius))
-        using (var fill = new SolidBrush(Color.FromArgb(Math.Max(1, (settings.Alpha * 255 + 50) / 100), StripSettings.ColorOf(settings.Background))))
+        using (var fill = new LinearGradientBrush(edge, Color.FromArgb(opacity, ControlPaint.Light(background, .12f)),
+            Color.FromArgb(opacity, background), 90f))
         using (var border = new Pen(Color.FromArgb(88, text), 1 / scale))
         using (var grip = new SolidBrush(Color.FromArgb(155, icon)))
         using (var numberFont = new Font("Segoe UI", 12, FontStyle.Bold, GraphicsUnit.Pixel))
@@ -147,21 +175,24 @@ internal static class StripArtwork
             graphics.FillPath(fill, path);
             graphics.DrawPath(border, path);
             for (int i = 0; i < 3; i++) graphics.FillEllipse(grip, 7, 10 + 5 * i, 2, 2);
-            int shown = Math.Max(1, Math.Min(rows.Count, MaxVisible));
+            int shown = Math.Max(1, Math.Min(rows.Count, settings.MaxDevices));
             using (var numberBrush = new SolidBrush(text))
             {
                 for (int i = 0; i < shown; i++)
                 {
                     BatteryReading row = rows.Count > 0 ? rows[i] : null;
-                    int x = 16 + i * (51 + settings.Gap);
+                    int x = 16 + i * (CellWidth(settings) + settings.Gap);
                     string glyph = row == null ? "\uE850" : row.Icon;
-                    using (var tint = new SolidBrush(row != null && row.Percent <= 25 ? low : icon))
-                        graphics.DrawString(glyph, iconFont, tint, new RectangleF(x, 0, 19, 32), format);
-                    graphics.DrawString(row == null ? "—" : row.Level, numberFont, numberBrush, new RectangleF(x + 20, 0, 39, 32), format);
+                    if (settings.DisplayMode != 2)
+                        using (var tint = new SolidBrush(row != null && row.Percent <= 25 ? low : icon))
+                            graphics.DrawString(glyph, iconFont, tint, new RectangleF(x, 0, 19, 32), format);
+                    if (settings.DisplayMode != 1)
+                        graphics.DrawString(row == null ? "—" : row.Level, numberFont, numberBrush,
+                            new RectangleF(x + (settings.DisplayMode == 2 ? 0 : 20), 0, 39, 32), format);
                 }
-                if (rows.Count > MaxVisible)
-                    graphics.DrawString("+" + (rows.Count - MaxVisible), numberFont, numberBrush,
-                        new RectangleF(18 + shown * 51 + (shown - 1) * settings.Gap, 0, 26, 32), format);
+                if (rows.Count > settings.MaxDevices)
+                    graphics.DrawString("+" + (rows.Count - settings.MaxDevices), numberFont, numberBrush,
+                        new RectangleF(18 + shown * CellWidth(settings) + (shown - 1) * settings.Gap, 0, 26, 32), format);
             }
         }
     }
@@ -191,6 +222,9 @@ internal sealed class SettingsWindow : Form
     private readonly NumericUpDown zoom = Number("Масштаб", 60, 175), gap = Number("Відступ", 0, 24),
         radius = Number("Кути", 0, 24), alpha = Number("Фон", 0, 100);
     private readonly CheckBox startup = new CheckBox { Text = "Запускати разом із Windows", AutoSize = true };
+    private readonly CheckedListBox devices = new CheckedListBox { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
+    private readonly ComboBox displayMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
+    private readonly NumericUpDown maxDevices = Number("Ліміт пристроїв", 1, 12);
     private readonly Button save = ButtonFor("Зберегти");
     private readonly Label error = new Label { AutoSize = true, ForeColor = Color.Firebrick };
     private readonly TextBox[] hex = new TextBox[4];
@@ -210,7 +244,9 @@ internal sealed class SettingsWindow : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(742, 510);
+        ClientSize = new Size(820, 535);
+        BackColor = Color.FromArgb(24, 30, 41);
+        ForeColor = Color.FromArgb(229, 237, 247);
         StartPosition = FormStartPosition.Manual;
         var work = strip.PositionScreen.WorkingArea;
         Location = new Point(work.Left + Math.Max(0, (work.Width - Width) / 2),
@@ -266,11 +302,39 @@ internal sealed class SettingsWindow : Form
         }
         column.Controls.Add(startup);
 
-        var previewArea = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(8, 0, 0, 8) };
+        var previewArea = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Margin = new Padding(10, 0, 0, 9) };
+        previewArea.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        previewArea.RowStyles.Add(new RowStyle(SizeType.Absolute, 195));
         previewArea.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         previewArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        previewArea.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         previewArea.Controls.Add(Heading("Прев’ю · перетягніть смужку"));
         previewArea.Controls.Add(preview);
+        previewArea.Controls.Add(Heading("Пристрої на смужці"));
+        devices.AccessibleName = "Пристрої на смужці";
+        previewArea.Controls.Add(devices);
+        var deviceActions = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Dock = DockStyle.Fill };
+        Button up = ButtonFor("↑"), down = ButtonFor("↓");
+        up.AutoSize = down.AutoSize = false;
+        up.Size = down.Size = new Size(34, 28);
+        up.AccessibleName = "Вище";
+        down.AccessibleName = "Нижче";
+        up.Click += (sender, args) => MoveDevice(-1);
+        down.Click += (sender, args) => MoveDevice(1);
+        displayMode.Items.AddRange(new object[] { "Іконка + %", "Тільки іконка", "Тільки %" });
+        deviceActions.Controls.AddRange(new Control[] { up, down,
+            new Label { Text = "Ліміт", AutoSize = true, Margin = new Padding(8, 8, 3, 0) }, maxDevices, displayMode });
+        previewArea.Controls.Add(deviceActions);
+        devices.ItemCheck += (sender, args) =>
+        {
+            if (loading) return;
+            string name = (string)devices.Items[args.Index];
+            var hidden = strip.Current.HiddenDevices.Where(n => n != name);
+            strip.Current.HiddenDevices = (args.NewValue == CheckState.Checked ? hidden : hidden.Concat(new[] { name })).ToArray();
+            strip.ApplySettings();
+        };
+        maxDevices.ValueChanged += (sender, args) => UpdateDeviceLayout();
+        displayMode.SelectedIndexChanged += (sender, args) => UpdateDeviceLayout();
         root.Controls.Add(column, 0, 0);
         root.Controls.Add(previewArea, 1, 0);
 
@@ -282,6 +346,8 @@ internal sealed class SettingsWindow : Form
         root.Controls.Add(footer, 0, 1);
         root.SetColumnSpan(footer, 2);
         Controls.Add(root);
+        Style(root);
+        save.BackColor = Color.FromArgb(38, 95, 171);
         AcceptButton = save;
         CancelButton = cancel;
 
@@ -317,6 +383,9 @@ internal sealed class SettingsWindow : Form
         gap.Value = settings.Gap;
         radius.Value = settings.Radius;
         alpha.Value = settings.Alpha;
+        maxDevices.Value = settings.MaxDevices;
+        displayMode.SelectedIndex = settings.DisplayMode;
+        RebuildDevices(true);
         string[] colors = CurrentColors();
         for (int i = 0; i < hex.Length; i++) hex[i].Text = colors[i];
         loading = false;
@@ -343,7 +412,63 @@ internal sealed class SettingsWindow : Form
         if (!x.ContainsFocus) x.Value = StripSettings.Clamp(strip.Left - actual.Bounds.Left, 0, (int)x.Maximum);
         if (!y.ContainsFocus) y.Value = StripSettings.Clamp(strip.Top - actual.Bounds.Top, 0, (int)y.Maximum);
         loading = false;
+        RebuildDevices(false);
         preview.Invalidate();
+    }
+
+    private void RebuildDevices(bool force)
+    {
+        var current = strip.Current;
+        string[] names = current.Ordered(strip.AllReadings).Select(row => row.Name).Distinct().ToArray();
+        if (!force && devices.Items.Cast<string>().SequenceEqual(names)) return;
+        string selected = devices.SelectedItem as string;
+        bool previous = loading;
+        loading = true;
+        devices.BeginUpdate();
+        devices.Items.Clear();
+        foreach (string name in names) devices.Items.Add(name, !current.HiddenDevices.Contains(name));
+        if (selected != null && names.Contains(selected)) devices.SelectedItem = selected;
+        devices.EndUpdate();
+        loading = previous;
+    }
+
+    private void MoveDevice(int delta)
+    {
+        int index = devices.SelectedIndex;
+        int target = index + delta;
+        if (index < 0 || target < 0 || target >= devices.Items.Count) return;
+        var order = devices.Items.Cast<string>().ToList();
+        string name = order[index];
+        order.RemoveAt(index);
+        order.Insert(target, name);
+        strip.Current.DeviceOrder = order.Concat(strip.Current.DeviceOrder.Except(order)).ToArray();
+        strip.ApplySettings();
+    }
+
+    private void UpdateDeviceLayout()
+    {
+        if (loading || displayMode.SelectedIndex < 0) return;
+        strip.Current.MaxDevices = (int)maxDevices.Value;
+        strip.Current.DisplayMode = displayMode.SelectedIndex;
+        strip.ApplySettings();
+    }
+
+    private static void Style(Control parent)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            control.ForeColor = Color.FromArgb(229, 237, 247);
+            var button = control as Button;
+            if (button != null)
+            {
+                button.FlatStyle = FlatStyle.Flat;
+                button.FlatAppearance.BorderColor = Color.FromArgb(64, 78, 98);
+                button.BackColor = Color.FromArgb(39, 51, 68);
+            }
+            else if (control is TextBox || control is ComboBox || control is NumericUpDown || control is CheckedListBox)
+                control.BackColor = Color.FromArgb(35, 45, 61);
+            Style(control);
+        }
     }
 
     private void PositionChanged()
@@ -372,7 +497,7 @@ internal sealed class SettingsWindow : Form
             Color color;
             bool correct = StripSettings.TryColor(hex[i].Text, out color);
             valid &= correct;
-            hex[i].BackColor = correct ? SystemColors.Window : Color.MistyRose;
+            hex[i].BackColor = correct ? Color.FromArgb(35, 45, 61) : Color.FromArgb(99, 40, 50);
         }
         error.Text = valid ? "" : "Формат #RRGGBB";
         save.Enabled = valid;
@@ -489,7 +614,7 @@ internal sealed class SettingsWindow : Form
             using (var fill = new LinearGradientBrush(bounds, Color.FromArgb(65, 86, 110), Color.FromArgb(26, 31, 43), 70f))
                 e.Graphics.FillRectangle(fill, bounds);
             var monitor = owner.PositionScreen.Bounds;
-            var sample = new RectangleF(21, 22, bounds.Width - 42, Math.Min(bounds.Height * .46f, (bounds.Width - 42) * monitor.Height / monitor.Width));
+            var sample = new RectangleF(21, 22, bounds.Width - 42, Math.Min(bounds.Height * .49f, (bounds.Width - 42) * monitor.Height / monitor.Width));
             using (var band = new SolidBrush(Color.FromArgb(75, 15, 19, 27)))
                 e.Graphics.FillRectangle(band, sample);
             using (var border = new Pen(Color.FromArgb(110, 187, 212, 235)))

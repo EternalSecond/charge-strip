@@ -42,6 +42,7 @@ internal sealed class Strip : ApplicationContext
     private static readonly Color Muted = Color.FromArgb(174, 183, 196);
     private readonly ContextMenuStrip details = new ContextMenuStrip();
     private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
+    private readonly LauncherButton launcher;
     private readonly NotifyIcon tray = new NotifyIcon();
     private readonly Font popupHeaderFont = new Font("Segoe UI", 10, FontStyle.Bold);
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 12000 };
@@ -50,6 +51,7 @@ internal sealed class Strip : ApplicationContext
     private string menuLanguage, iconState;
     private List<BatteryReading> rows = new List<BatteryReading>();
     private DateTime? refreshed;
+    private int? dismissedByClick;
     private StripSettings saved, draft;
     private SettingsWindow editor;
     private bool polling, disposed;
@@ -61,25 +63,32 @@ internal sealed class Strip : ApplicationContext
     public Strip(EventWaitHandle openRequest, bool launchEditor)
     {
         saved = StripSettings.Load() ?? new StripSettings();
+        launcher = new LauncherButton(this);
         details.ShowImageMargin = false;
         details.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
         details.ForeColor = TextColor;
+        details.Closed += (sender, args) =>
+        {
+            if (args.CloseReason == ToolStripDropDownCloseReason.AppClicked ||
+                args.CloseReason == ToolStripDropDownCloseReason.AppFocusChange)
+                dismissedByClick = Environment.TickCount;
+        };
         trayMenu.Items.Add("Налаштування", null, (sender, args) => OpenSettings());
         trayMenu.Items.Add("Оновити", null, async (sender, args) => await RefreshReadings());
         trayMenu.Items.Add("Вийти", null, (sender, args) => ExitThread());
         tray.ContextMenuStrip = trayMenu;
         tray.MouseClick += (sender, args) =>
         {
-            if (args.Button == MouseButtons.Left) OpenDetails();
+            if (args.Button == MouseButtons.Left) OpenDetails(Cursor.Position);
         };
         tray.DoubleClick += (sender, args) => OpenSettings();
         trayMenu.Opening += (sender, args) => details.Close();
 
         ApplySettings();
-        tray.Visible = true;
         bool initialRead = true;
         inputTimer.Tick += async (sender, args) =>
         {
+            SyncLauncher();
             if (launchEditor || openRequest.WaitOne(0))
             {
                 launchEditor = false;
@@ -124,8 +133,28 @@ internal sealed class Strip : ApplicationContext
         string hint = primary == null ? "Charge Strip" : Translate(primary.Name) + " · " + primary.Level;
         hint = hint.Substring(0, Math.Min(63, hint.Length));
         if (tray.Text != hint) tray.Text = hint;
+        SyncLauncher();
+        launcher.RefreshAppearance();
         if (details.Visible) FillDetails();
         if (editor != null) editor.SyncReadings();
+    }
+
+    private void SyncLauncher()
+    {
+        bool showTray = !launcher.UpdatePlacement();
+        if (tray.Visible != showTray) tray.Visible = showTray;
+    }
+
+    internal void SaveLauncherOffset(int offset)
+    {
+        if (draft != null) draft.LauncherOffset = offset;
+        else
+        {
+            var candidate = saved.Copy();
+            candidate.LauncherOffset = offset;
+            if (Save(candidate)) saved = candidate;
+        }
+        ApplySettings();
     }
 
     internal static Icon CreateTrayIcon(string level, Color accent)
@@ -232,11 +261,17 @@ internal sealed class Strip : ApplicationContext
         finally { polling = false; }
     }
 
-    private void OpenDetails()
+    internal void OpenActions(Point point)
+    {
+        details.Close();
+        trayMenu.Show(point, ToolStripDropDownDirection.AboveLeft);
+    }
+
+    internal void OpenDetails(Point point)
     {
         if (details.Visible) { details.Close(); return; }
+        if (dismissedByClick.HasValue && unchecked((uint)(Environment.TickCount - dismissedByClick.Value)) < 300) return;
         FillDetails();
-        Point point = Cursor.Position;
         details.Show(point, ToolStripDropDownDirection.AboveLeft);
     }
 
@@ -333,6 +368,7 @@ internal sealed class Strip : ApplicationContext
             if (editor != null) editor.Dispose();
             timer.Dispose();
             inputTimer.Dispose();
+            launcher.Dispose();
             details.Dispose();
             popupHeaderFont.Dispose();
             tray.Visible = false;

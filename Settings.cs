@@ -18,6 +18,8 @@ public sealed class StripSettings
     public string[] HiddenDevices = new string[0], DeviceOrder = new string[0];
     public int MaxDevices = 5, DisplayMode;
     public string Language = "uk";
+    public bool Launcher = true;
+    public int? LauncherOffset;
 
     internal List<BatteryReading> Selected(IEnumerable<BatteryReading> readings)
     {
@@ -66,6 +68,8 @@ public sealed class StripSettings
                 settings.Gap = Clamp(settings.Gap, 0, 24);
                 settings.Alpha = Clamp(settings.Alpha, 35, 100);
                 if (Array.IndexOf(Localize.Languages, settings.Language) < 0) settings.Language = "uk";
+                if (settings.LauncherOffset.HasValue)
+                    settings.LauncherOffset = Clamp(settings.LauncherOffset.Value, 0, 100000);
                 settings.MaxDevices = Clamp(settings.MaxDevices, 1, 12);
                 settings.DisplayMode = Clamp(settings.DisplayMode, 0, 2);
                 settings.HiddenDevices = settings.HiddenDevices ?? new string[0];
@@ -141,6 +145,7 @@ internal sealed class SettingsWindow : Form
     private readonly Strip strip;
     private readonly NumericUpDown zoom = Number("Масштаб", 60, 175), gap = Number("Відступ", 0, 24),
         alpha = Number("Фон", 35, 100);
+    private readonly CheckBox launcher = new CheckBox { Text = "Кнопка Charge біля трея", AutoSize = true };
     private readonly CheckBox startup = new CheckBox { Text = "Запускати разом із Windows", AutoSize = true };
     private readonly CheckedListBox devices = new CheckedListBox { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
     private readonly ComboBox displayMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
@@ -209,7 +214,14 @@ internal sealed class SettingsWindow : Form
             if (!StartupRegistration.IsAccessError(problem)) throw;
             startup.Enabled = false;
         }
+        column.Controls.Add(launcher);
         column.Controls.Add(startup);
+        launcher.CheckedChanged += (sender, args) =>
+        {
+            if (loading) return;
+            strip.Current.Launcher = launcher.Checked;
+            strip.ApplySettings();
+        };
 
         var previewArea = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Margin = new Padding(10, 0, 0, 9) };
         previewArea.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -292,6 +304,7 @@ internal sealed class SettingsWindow : Form
     {
         loading = true;
         var settings = strip.Current;
+        launcher.Checked = settings.Launcher;
         zoom.Value = settings.Zoom;
         gap.Value = settings.Gap;
         alpha.Value = settings.Alpha;
@@ -501,7 +514,15 @@ internal sealed class SettingsWindow : Form
                 e.Graphics.FillRectangle(backdrop, canvas);
                 var tray = new Rectangle(0, canvas.Bottom - 34, canvas.Width, 34);
                 e.Graphics.FillRectangle(bar, tray);
-                e.Graphics.DrawIcon(icon, new Rectangle(tray.Right - 78, tray.Top + 4, 25, 25));
+                if (settings.Launcher)
+                {
+                    var button = new Rectangle(tray.Right - 127, tray.Top + 5, 76, 24);
+                    e.Graphics.FillRectangle(panel, button);
+                    e.Graphics.DrawRectangle(border, button);
+                    TextRenderer.DrawText(e.Graphics, "Charge", label, button, StripSettings.ColorOf(settings.Text),
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                }
+                else e.Graphics.DrawIcon(icon, new Rectangle(tray.Right - 78, tray.Top + 4, 25, 25));
                 TextRenderer.DrawText(e.Graphics, "22:41", label, new Point(tray.Right - 48, tray.Top + 8), Color.WhiteSmoke);
                 int count = Math.Min(rows.Count, 3);
                 var popup = new Rectangle(16, 10, canvas.Width - 32, 37 + Math.Max(1, count) * 29);

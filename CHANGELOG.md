@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## 0.5.0
+
+- Added a compact, draggable Charge button next to the system tray.
+- The button opens the existing battery flyout. The numeric icon remains available as a tray-only option.
+
 ## 0.4.0
 
 - Replaced the floating strip with a battery percentage icon in the Windows system tray.

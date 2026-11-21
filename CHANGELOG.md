@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 0.3.1
+
+- Refreshed the portable ZIP with the English Settings screenshot and current documentation.
+
 ## 0.3.0
 
 - Added a language selector for Ukrainian, Russian, and English in Settings.

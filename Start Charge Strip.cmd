@@ -1,18 +1,33 @@
 @echo off
 setlocal
 set "compiler=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+set "output=%~dp0build"
+if /i "%~1"=="/package" (
+    set "output=%~dp0build\package"
+    goto build
+)
 if /i "%~1"=="/build" goto build
-if exist "%~dp0build\ChargeStrip.exe" goto launch
+if exist "%output%\ChargeStrip.exe" goto launch
+
 :build
-if not exist "%~dp0build" mkdir "%~dp0build"
-"%compiler%" /nologo /target:winexe /platform:x64 /optimize+ /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:"%~dp0build\ChargeStrip.exe" "%~dp0ChargeStrip.cs" "%~dp0Batteries.cs" "%~dp0Settings.cs"
+if not exist "%output%" mkdir "%output%"
+"%compiler%" /nologo /target:winexe /platform:x64 /optimize+ /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:"%output%\ChargeStrip.exe" "%~dp0ChargeStrip.cs" "%~dp0Batteries.cs" "%~dp0Settings.cs"
 if errorlevel 1 (
-    pause
+    if /i not "%~1"=="/package" pause
     exit /b 1
 )
+if /i "%~1"=="/package" goto package
+
 :launch
 if /i "%~1"=="/settings" (
-    start "" "%~dp0build\ChargeStrip.exe" --settings
+    start "" "%output%\ChargeStrip.exe" --settings
 ) else (
-    start "" "%~dp0build\ChargeStrip.exe"
+    start "" "%output%\ChargeStrip.exe"
 )
+exit /b 0
+
+:package
+set "CHARGE_STRIP_PACKAGE_DIR=%output%"
+set "CHARGE_STRIP_PROJECT_DIR=%~dp0"
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $dir=$env:CHARGE_STRIP_PACKAGE_DIR; $root=$env:CHARGE_STRIP_PROJECT_DIR; $zip=Join-Path $root 'build\Charge-Strip-Windows-x64.zip'; $files=@((Join-Path $dir 'ChargeStrip.exe'),(Join-Path $root 'Open Settings.cmd'),(Join-Path $root 'README.md'),(Join-Path $root 'CHANGELOG.md'),(Join-Path $root 'docs')); Compress-Archive -LiteralPath $files -DestinationPath $zip -Force; $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant(); Set-Content -LiteralPath (Join-Path $root 'build\SHA256SUMS.txt') -Value ($sha+' *Charge-Strip-Windows-x64.zip') -Encoding ascii; Write-Output $zip"
+exit /b %errorlevel%

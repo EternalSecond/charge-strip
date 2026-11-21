@@ -1,47 +1,66 @@
 ﻿# Charge Strip
 
-Charge Strip is a compact Windows 11 battery overlay for wireless peripherals. Drag it into a free space beside the taskbar icons or media controls. Open Settings to choose which devices appear, in what order, and how much space the strip uses.
+A portable Windows 11 taskbar overlay for headset, mouse and other battery readings. Choose the devices you want to see, then drag the strip beside your taskbar icons or media controls.
 
-## Download and run
+[**Download for Windows 11 x64**](https://github.com/EternalSecond/charge-strip/releases/latest/download/Charge-Strip-Windows-x64.zip) · [Release notes and checksum](https://github.com/EternalSecond/charge-strip/releases/latest) · [Changelog](CHANGELOG.md)
 
-1. Open [Releases](https://github.com/EternalSecond/charge-strip/releases) and download the latest **Charge-Strip-Windows-x64.zip**.
-2. Extract the entire ZIP to a folder you plan to keep.
-3. Run **ChargeStrip.exe**. To open the editor, right-click the strip or run **Open Settings.cmd** from the same folder. The command works while the strip is already running.
+![Charge Strip settings with a live preview, device checklist, arrangement controls, and color options](docs/settings-preview.png)
 
-The repository is private. Release downloads require an account with repository access. The portable build is unsigned. Windows may show a publisher prompt.
+## Install and run
 
-## Everyday use
+1. Download **Charge-Strip-Windows-x64.zip** and extract it to a folder you plan to keep.
+2. Open **ChargeStrip.exe**. The overlay appears near the taskbar.
+3. Right-click the overlay or open **Open Settings.cmd** to configure it. The launcher reuses the running instance.
 
-| Action | What it does |
+The portable executable is unsigned. Windows may display a publisher warning. To verify your download, run `Get-FileHash .\Charge-Strip-Windows-x64.zip -Algorithm SHA256` in PowerShell and compare it with **SHA256SUMS.txt** on the release page.
+
+## Customize your strip
+
+| Action | Result |
 | --- | --- |
-| Left-click the strip | Show all detected devices and their battery status |
-| Right-click the strip | Open Settings |
+| Left-click or hover | See all detected devices in the list, or the name of the reading under the pointer |
 | Drag the strip or its preview | Move the overlay, including between monitors |
-| Use the Devices list in Settings | Check what to show, reorder devices with the arrows, and set a limit of 1–12 |
+| Set a monitor and X/Y | Place the strip at an exact offset from that monitor’s top-left corner |
+| Check devices, use the arrows and set a limit | Choose the visible readings, their order and how many appear |
 | Change display mode | Show icons and percentages, icons only, or percentages only |
-| Enable Run with Windows | Add a per-user Startup shortcut that launches the strip |
-| Save or Cancel | Keep the changes or restore the previous layout and appearance |
+| Change scale, spacing, colors or opacity | Preview appearance changes immediately |
+| Enable **Запускати разом із Windows** | Start the strip when your Windows account signs in |
+| **Зберегти** / **Скасувати** | Save / cancel changes |
 
-You can also enter exact monitor-relative coordinates, change scale, gap and corner radius, and adjust colors and background opacity. The application stores preferences in `%LOCALAPPDATA%\Charge Strip\settings.xml`. It refreshes readings in the background about every 12 seconds.
+The current app interface is in Ukrainian. Readings refresh in the background about every 12 seconds.
 
-## Battery support
+## Device compatibility
 
-| Device | Source and verification |
+| Device or source | Status |
 | --- | --- |
-| SteelSeries Arctis Nova Pro Wireless | Hardware-tested with the `1038:12E0` 2.4 GHz USB base. Displays the headset and the spare battery separately. Both readings were compared with SteelSeries Engine. |
-| HyperX Pulsefire Haste 2 Wireless | Hardware-tested with the `03F0:0D97` USB receiver. The app read the percentage and charging state during a live charge. The `03F0:0F98` variant uses the same documented query. |
-| HyperX Cloud Alpha Wireless | The `03F0:098D` receiver was detected on the test machine. The battery query returned no reading there. |
-| PC battery and Bluetooth accessories | Uses the Windows battery data if the device publishes it. Bluetooth compatibility depends on the model and connection mode. |
+| SteelSeries Arctis Nova Pro Wireless, USB base `1038:12E0` | Verified on hardware. Separate readings for the headset and the spare battery in the base, compared with SteelSeries Engine. |
+| HyperX Pulsefire Haste 2 Wireless, USB receiver `03F0:0D97` | Verified on hardware. Reports percentage and charging status. |
+| HyperX Pulsefire Haste 2 Wireless, USB receiver `03F0:0F98` | Uses the documented battery query. This receiver revision was not tested for this release. |
+| HyperX Cloud Alpha Wireless, USB receiver `03F0:098D` | Receiver detected on the test PC. It returned no battery reading during testing. |
+| PC battery and Bluetooth accessories | Displays readings exposed by Windows. Availability depends on the model and connection mode. |
 
-Brand names alone do not determine compatibility. A detected receiver can appear with an unavailable reading when the device is asleep, off, or does not answer.
+A dash means a detected device has no available reading. Check that the device is powered on, awake and connected through a supported receiver or Bluetooth mode.
+
+## Settings, updates and removal
+
+Preferences are stored per user in `%LOCALAPPDATA%\Charge Strip\settings.xml`. Charge Strip reads battery data locally and has no telemetry.
+
+To update, quit Charge Strip using its notification-area menu and extract the new files into the same folder. To remove it, turn off **Запускати разом із Windows**, save, exit the app, then delete the extracted folder. Remove the separate preferences file if you also want to clear your layout and colors.
 
 ## Build from source
 
-Use 64-bit Windows 11 with the built-in .NET Framework compiler. Run `Start Charge Strip.cmd` from the repository root to build and launch. You can pass `/settings` to open the editor. To rebuild after changes, exit Charge Strip and run the command with `/build`.
+Use Windows 11 x64 and the included .NET Framework compiler. Run these commands from Command Prompt in the repository root.
 
-Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the taskbar overlay and single-instance startup. `Settings.cs` handles rendering, the editor and persistence. `Batteries.cs` reads Windows device properties and sends read-only battery queries to supported USB HID devices.
+| Command | Result |
+| --- | --- |
+| `"Start Charge Strip.cmd"` | Build if needed and launch the overlay |
+| `"Start Charge Strip.cmd" /settings` | Build if needed and open Settings |
+| `"Start Charge Strip.cmd" /build` | Rebuild and launch. Exit any running copy first. |
+| `"Start Charge Strip.cmd" /package` | Build the portable ZIP and SHA-256 checksum in `build\` |
 
-## Protocol references
+Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the overlay and startup. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID.
+
+### Protocol references
 
 - [SteelSeries Arctis HID protocol](https://github.com/TimP4w/HaloDaemon-plugins/blob/main/steelseries_arctis/docs/protocol.md)
 - [HyperX Pulsefire Haste 2 battery protocol](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/blob/main/docs/hyperx_haste_2.md)

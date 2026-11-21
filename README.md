@@ -4,7 +4,7 @@ A portable Windows 11 battery monitor for headsets, mice, and other devices. Cli
 
 [**Download for Windows 11 x64**](https://github.com/EternalSecond/charge-strip/releases/latest/download/Charge-Strip-Windows-x64.zip) · [Release notes and checksum](https://github.com/EternalSecond/charge-strip/releases/latest) · [Changelog](CHANGELOG.md)
 
-![Charge Strip battery flyout with mouse and headset levels](docs/tray-flyout.png)
+![Charge Strip open on Windows 11, showing real mouse and headset battery levels](docs/tray-popup-windows.png)
 
 [See the Settings window](docs/settings-preview.png)
 

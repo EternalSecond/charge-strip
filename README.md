@@ -4,7 +4,7 @@ A portable Windows 11 taskbar overlay for headset, mouse and other battery readi
 
 [**Download for Windows 11 x64**](https://github.com/EternalSecond/charge-strip/releases/latest/download/Charge-Strip-Windows-x64.zip) · [Release notes and checksum](https://github.com/EternalSecond/charge-strip/releases/latest) · [Changelog](CHANGELOG.md)
 
-![Charge Strip settings with a live preview, device checklist, arrangement controls, and color options](docs/settings-preview.png)
+![Charge Strip Settings in English, with the language selector, live preview, and device checklist](docs/settings-preview.png)
 
 ## Install and run
 

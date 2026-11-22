@@ -202,6 +202,8 @@ internal sealed class ResourcesModule : IDisposable
     private ResourcePanel panel;
     private ResourceReading reading = new ResourceReading();
     private bool sampling, disposed;
+    internal ResourceReading Reading { get { return reading; } }
+    internal event Action Changed;
 
     internal ResourcesModule(Func<StripSettings> settings, Action dismissBattery, Action openSettings)
     {
@@ -211,11 +213,11 @@ internal sealed class ResourcesModule : IDisposable
         timer.Tick += async (sender, args) => await Sample();
     }
 
-    internal void Apply()
+    internal void Apply(bool useTray)
     {
         if (disposed) return;
         var current = settings();
-        if (!current.ResourcesEnabled)
+        if (!current.ModuleVisible("resources"))
         {
             Close();
             timer.Stop();
@@ -224,27 +226,29 @@ internal sealed class ResourcesModule : IDisposable
             iconKey = null;
             return;
         }
-        if (tray == null)
+        if (useTray && tray == null)
         {
             tray = new SystemTrayIcon(2, "Charge Strip PC Resources");
-            tray.Activated += Toggle;
+            tray.Activated += () => Open(tray.Bounds);
             tray.MenuRequested += () => { Close(); openSettings(); };
-            timer.Start();
         }
-        UpdateIcon(current);
+        else if (!useTray && tray != null) { tray.Dispose(); tray = null; }
+        if (!timer.Enabled) timer.Start();
+        if (tray != null) UpdateIcon(current);
         if (panel != null) panel.UpdateReading(reading, current);
     }
 
     private async Task Sample()
     {
-        if (disposed || tray == null || sampling) return;
+        if (disposed || !timer.Enabled || sampling) return;
         sampling = true;
         try
         {
             reading = await Task.Run(() => sampler.Read());
-            if (!disposed && tray != null)
+            if (!disposed && timer.Enabled)
             {
-                UpdateIcon(settings());
+                if (tray != null) UpdateIcon(settings());
+                if (Changed != null) Changed();
                 if (panel != null) panel.UpdateReading(reading, settings());
             }
         }
@@ -321,15 +325,14 @@ internal sealed class ResourcesModule : IDisposable
         graphics.Restore(state);
     }
 
-    private void Toggle()
+    internal void Open(Rectangle bounds)
     {
         if (panel != null) { Close(); return; }
         dismissBattery();
-        var bounds = tray.Bounds;
         if (bounds.IsEmpty) bounds = new Rectangle(Cursor.Position, new Size(1, 1));
         panel = new ResourcePanel(reading, settings(), bounds);
         panel.FormClosed += (sender, args) => { if (ReferenceEquals(panel, sender)) panel = null; };
-        tray.PrepareMenu();
+        if (tray != null) tray.PrepareMenu();
         panel.Show();
         if (panel != null) panel.Activate();
     }

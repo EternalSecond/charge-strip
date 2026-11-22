@@ -1,6 +1,6 @@
 ﻿# Charge Strip
 
-A portable Windows 11 battery monitor for headsets, mice, and other devices. Click its battery icon in the system tray to see the readings for your selected devices.
+A portable Windows 11 taskbar strip for device batteries, media controls, and PC resources. The latest release download and screenshots below show the earlier tray layout. Build from source to try the shared strip.
 
 [**Download for Windows 11 x64**](https://github.com/EternalSecond/charge-strip/releases/latest/download/Charge-Strip-Windows-x64.zip) · [Release notes and checksum](https://github.com/EternalSecond/charge-strip/releases/latest) · [Changelog](CHANGELOG.md)
 
@@ -11,30 +11,36 @@ A portable Windows 11 battery monitor for headsets, mice, and other devices. Cli
 ## Install and run
 
 1. Download **Charge-Strip-Windows-x64.zip** and extract it to a folder you plan to keep.
-2. Open **ChargeStrip.exe**. Look for the battery icon in the notification area beside the clock. If Windows puts it under the **Show hidden icons** caret, drag it into the visible notification area.
-3. Right-click the battery icon and select **Settings**, or launch **Open Settings.cmd**. The launcher reuses the running instance.
+2. Open **ChargeStrip.exe**. The shared strip uses available space between the taskbar apps and the notification area. When the gap is too small, the enabled modules use notification-area icons. Windows may put those icons under **Show hidden icons**.
+3. Right-click the strip or a tray icon and select **Settings**, or launch **Open Settings.cmd**. The launcher reuses the running instance.
 
 The portable executable is unsigned. Windows may display a publisher warning. To verify your download, run `Get-FileHash .\Charge-Strip-Windows-x64.zip -Algorithm SHA256` in PowerShell and compare it with **SHA256SUMS.txt** on the release page.
 
-## Use the system tray
+## Use the strip
 
 | Action | Result |
 | --- | --- |
-| Left-click the battery icon | Open the battery list |
+| Left-click the battery module | Open the battery list |
 | Hover over the icon | See the first selected device and its percentage |
-| Right-click the icon | Open Settings, refresh, or exit |
+| Right-click the strip or a tray icon | Open Settings, refresh, or exit |
+| Drag the strip by its left edge | Move it within the available taskbar gap |
+| Check modules and use the arrows | Toggle Batteries, Media, and PC Resources and order them from left to right. Changes appear immediately in the preview and on the taskbar. |
 | Check devices, use the arrows and set a limit | Choose which readings appear. The first selected device drives the tray icon. |
 | Enable **Show a number on the tray icon** | Use a percentage instead of a filled battery symbol |
 | Change display mode | Show icons and percentages, icons only, or percentages only |
 | Change scale, spacing, colors or background tint | Adjust the battery flyout and tray icon colors |
-| Enable **Run with Windows** | Start Charge Strip when your Windows account signs in |
+| Enable **Run with Windows** | Show the strip when your Windows account signs in |
 | Save / Cancel | Keep / revert changes |
 
 Choose **УКР**, **РУС**, or **ENG** at the top of Settings to switch between Ukrainian, Russian, and English. The interface updates immediately. Select **Save** to keep the language, or **Cancel** to revert. Readings refresh in the background about every 12 seconds.
 
+## Media
+
+Click the track title or artwork to open the media card above the strip. The card shows the last available track or video immediately while Windows metadata and artwork refresh in the background. Pick a source in the card to switch between available Windows media sessions, including Chrome with YouTube and Spotify. Playing and paused sessions can appear. The card enables playback, skipping, and seeking according to the selected session's capabilities. Escape or a click outside dismisses the card.
+
 ## PC Resources
 
-Click the chip icon beside the battery icon to open **PC Resources**. The chip displays the current CPU percentage by default. Enable **Resources icon only** in Settings to show only the chip, or disable **PC Resources** to hide it. Windows controls icon order and visibility. If the chip starts under **Show hidden icons**, drag it beside the battery icon.
+Click the chip with a pulse line to open **PC Resources**. The chip displays the current CPU percentage by default. Enable **Resources icon only** in Settings to save space, or uncheck **PC Resources** in the module list to hide it.
 
 The panel shows CPU load, used and total physical memory, GPU load, system drive usage, and current download and upload rates. GPU summarizes the busiest available hardware engine and shows a dash when Windows supplies no GPU data. Network rates aggregate active non-loopback, non-tunnel interfaces. The panel opens by click and dismisses on Escape or an outside click.
 
@@ -67,7 +73,7 @@ Use Windows 11 x64 and the included .NET Framework compiler. Run these commands 
 | `"Start Charge Strip.cmd" /build` | Rebuild and launch. Exit any running copy first. |
 | `"Start Charge Strip.cmd" /package` | Build the portable ZIP and SHA-256 checksum in `build\` |
 
-Charge Strip is written in C# with Windows Forms. `ChargeStrip.cs` handles the popup and startup. `SystemTrayIcon.cs` registers the tray icon and anchors menus to its Windows position. `Settings.cs` handles the editor, rendering and persistence. `Batteries.cs` reads Windows properties and sends model-specific battery status queries over USB HID. `Localize.cs` contains the three interface translations.
+Charge Strip is written in C# with Windows Forms. `ModuleStrip.cs` measures the available taskbar space with Windows UI Automation and draws the shared strip. `Settings.cs` handles the editor and persistence. `MediaSessions.cs` reads Windows media sessions and artwork on a worker thread. `PcResources.cs` samples Windows performance data. `Batteries.cs` reads Windows properties and queries supported USB HID devices. `Localize.cs` contains the three interface translations.
 
 ### Protocol references
 

@@ -58,11 +58,13 @@ internal sealed class Strip : ApplicationContext
     internal StripSettings Current { get { return draft ?? saved; } }
     internal IList<BatteryReading> AllReadings { get { return rows; } }
     internal List<BatteryReading> Readings { get { return Current.Selected(rows).Take(Current.MaxDevices).ToList(); } }
+    internal ResourceReading ResourceReading { get { return resources.Reading; } }
 
     public Strip(EventWaitHandle openRequest, bool launchEditor)
     {
         saved = StripSettings.Load() ?? new StripSettings();
         resources = new ResourcesModule(() => Current, () => details.Close(), OpenSettings);
+        resources.Changed += () => { if (editor != null) editor.SyncReadings(); };
         details.ShowImageMargin = false;
         details.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
         details.ForeColor = TextColor;

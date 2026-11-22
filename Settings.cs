@@ -20,6 +20,30 @@ public sealed class StripSettings
     public string Language = "uk";
     public bool NumericTrayIcon;
     public bool ResourcesEnabled = true, ResourcesIconOnly;
+    public ResourceMetric[] ResourceStripOrder;
+    public ResourceMetric[] ResourcePanelOrder = (ResourceMetric[])ResourceMetrics.DefaultOrder.Clone();
+    public ResourceMetric HiddenStripMetrics = ResourceMetrics.All & ~ResourceMetric.Cpu, HiddenPanelMetrics;
+    public bool ResourceScales;
+    public string ResourceScaleColor;
+
+    internal ResourceMetric[] ResourceOrder(bool onStrip)
+    {
+        return (onStrip ? ResourceStripOrder : ResourcePanelOrder) ?? ResourceMetrics.DefaultOrder;
+    }
+
+    internal ResourceMetric HiddenMetrics(bool onStrip)
+    {
+        if (!onStrip) return HiddenPanelMetrics;
+        return ResourceStripOrder == null && ResourcesIconOnly ? ResourceMetrics.All : HiddenStripMetrics;
+    }
+
+    internal IEnumerable<ResourceMetric> VisibleMetrics(bool onStrip)
+    {
+        ResourceMetric hidden = HiddenMetrics(onStrip);
+        return ResourceOrder(onStrip).Where(metric => (hidden & metric) == 0);
+    }
+
+    internal Color ScaleColor { get { return ColorOf(ResourceScaleColor ?? Icons); } }
 
     internal List<BatteryReading> Selected(IEnumerable<BatteryReading> readings)
     {
@@ -86,6 +110,11 @@ public sealed class StripSettings
                 if (!TryColor(settings.Text, out color)) settings.Text = defaults.Text;
                 if (!TryColor(settings.Icons, out color)) settings.Icons = defaults.Icons;
                 if (!TryColor(settings.Low, out color)) settings.Low = defaults.Low;
+                settings.HiddenStripMetrics = settings.HiddenMetrics(true) & ResourceMetrics.All;
+                settings.HiddenPanelMetrics &= ResourceMetrics.All;
+                settings.ResourceStripOrder = ResourceMetrics.Normalize(settings.ResourceStripOrder);
+                settings.ResourcePanelOrder = ResourceMetrics.Normalize(settings.ResourcePanelOrder);
+                if (!TryColor(settings.ResourceScaleColor, out color)) settings.ResourceScaleColor = null;
                 return settings;
             }
         }
@@ -146,6 +175,178 @@ internal static class StartupRegistration
     }
 }
 
+internal sealed class ResourceEditor : UserControl
+{
+    private readonly Strip owner;
+    private readonly CheckedListBox stripList, panelList;
+    private readonly ComboBox mode = new ComboBox { Width = 184, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly TextBox hex = new TextBox { Width = 91, MaxLength = 7, AccessibleName = "Колір шкал" };
+    private readonly Control preview;
+    private bool loading;
+
+    internal ResourceEditor(Strip owner, Action validate)
+    {
+        this.owner = owner;
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Padding = new Padding(12) };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 328));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var options = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        stripList = AddList(options, "На смужці", true);
+        panelList = AddList(options, "У панелі", false);
+        options.Controls.Add(Heading("Вигляд панелі"));
+        mode.AccessibleName = "Вигляд панелі";
+        options.Controls.Add(mode);
+        options.Controls.Add(Heading("Колір шкал"));
+        var colorRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+        var palette = new Button { Text = "Палітра…", AutoSize = true };
+        colorRow.Controls.AddRange(new Control[] { hex, palette });
+        options.Controls.Add(colorRow);
+        layout.Controls.Add(options, 0, 0);
+
+        var previewArea = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        previewArea.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        previewArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        previewArea.Controls.Add(Heading("Попередній перегляд"));
+        preview = new ResourcePreview(owner) { Dock = DockStyle.Fill };
+        previewArea.Controls.Add(preview);
+        layout.Controls.Add(previewArea, 1, 0);
+        Controls.Add(layout);
+
+        mode.SelectedIndexChanged += (sender, args) =>
+        {
+            if (loading || mode.SelectedIndex < 0) return;
+            owner.Current.ResourceScales = mode.SelectedIndex == 1;
+            owner.ApplySettings();
+        };
+        hex.TextChanged += (sender, args) =>
+        {
+            if (loading) return;
+            Color color;
+            if (StripSettings.TryColor(hex.Text, out color))
+            {
+                owner.Current.ResourceScaleColor = hex.Text.ToUpperInvariant();
+                owner.ApplySettings();
+            }
+            validate();
+        };
+        palette.Click += (sender, args) =>
+        {
+            using (var dialog = new ColorDialog { Color = owner.Current.ScaleColor, FullOpen = true })
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    hex.Text = string.Format("#{0:X2}{1:X2}{2:X2}", dialog.Color.R, dialog.Color.G, dialog.Color.B);
+        };
+    }
+
+    private static Label Heading(string caption)
+    {
+        return new Label { Text = caption, AutoSize = true, Margin = new Padding(2, 9, 0, 4) };
+    }
+
+    private CheckedListBox AddList(FlowLayoutPanel options, string caption, bool onStrip)
+    {
+        options.Controls.Add(Heading(caption));
+        var group = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+        var list = new CheckedListBox { Width = 236, Height = 114, IntegralHeight = false, FormattingEnabled = true,
+            AccessibleName = caption };
+        var arrows = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.TopDown, Margin = Padding.Empty };
+        foreach (int delta in new[] { -1, 1 })
+        {
+            var arrow = new Button { Text = delta < 0 ? "↑" : "↓", AccessibleName = delta < 0 ? "Вище" : "Нижче",
+                Width = 37, Height = 26 };
+            arrow.Click += (sender, args) =>
+            {
+                int source = list.SelectedIndex, target = source + delta;
+                if (source < 0 || target < 0 || target >= list.Items.Count) return;
+                var order = (ResourceMetric[])owner.Current.ResourceOrder(onStrip).Clone();
+                ResourceMetric selected = order[source];
+                order[source] = order[target];
+                order[target] = selected;
+                if (onStrip) owner.Current.ResourceStripOrder = order;
+                else owner.Current.ResourcePanelOrder = order;
+                Fill(list, onStrip, selected);
+                owner.ApplySettings();
+            };
+            arrows.Controls.Add(arrow);
+        }
+        list.Format += (sender, args) => args.Value = owner.Translate(ResourceMetrics.Label((ResourceMetric)args.ListItem));
+        list.ItemCheck += (sender, args) =>
+        {
+            if (loading) return;
+            var settings = owner.Current;
+            ResourceMetric hidden = settings.HiddenMetrics(onStrip);
+            ResourceMetric item = (ResourceMetric)list.Items[args.Index];
+            hidden = args.NewValue == CheckState.Checked ? hidden & ~item : hidden | item;
+            if (onStrip)
+            {
+                settings.ResourceStripOrder = settings.ResourceOrder(true);
+                settings.HiddenStripMetrics = hidden;
+            }
+            else settings.HiddenPanelMetrics = hidden;
+            owner.ApplySettings();
+        };
+        group.Controls.AddRange(new Control[] { list, arrows });
+        options.Controls.Add(group);
+        return list;
+    }
+
+    private void Fill(CheckedListBox list, bool onStrip, object selected)
+    {
+        bool wasLoading = loading;
+        loading = true;
+        list.BeginUpdate();
+        list.Items.Clear();
+        var settings = owner.Current;
+        foreach (ResourceMetric metric in settings.ResourceOrder(onStrip))
+            list.Items.Add(metric, (settings.HiddenMetrics(onStrip) & metric) == 0);
+        list.SelectedItem = selected;
+        list.EndUpdate();
+        loading = wasLoading;
+    }
+
+    internal void Sync()
+    {
+        loading = true;
+        Fill(stripList, true, stripList.SelectedItem);
+        Fill(panelList, false, panelList.SelectedItem);
+        mode.Items.Clear();
+        mode.Items.AddRange(new object[] { owner.Translate("Цифри"), owner.Translate("Цифри + шкала") });
+        mode.SelectedIndex = owner.Current.ResourceScales ? 1 : 0;
+        hex.Text = owner.Current.ResourceScaleColor ?? owner.Current.Icons;
+        loading = false;
+        RefreshPreview();
+    }
+
+    internal bool ValidateColor()
+    {
+        Color unused;
+        bool valid = StripSettings.TryColor(hex.Text, out unused);
+        hex.BackColor = valid ? Color.FromArgb(35, 45, 61) : Color.FromArgb(99, 40, 50);
+        return valid;
+    }
+
+    internal void RefreshPreview() { preview.Invalidate(); }
+
+    private sealed class ResourcePreview : Control
+    {
+        private readonly Strip owner;
+        internal ResourcePreview(Strip owner) { this.owner = owner; DoubleBuffered = true; }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var settings = owner.Current;
+            var reading = owner.ResourceReading;
+            int count = settings.VisibleMetrics(true).Count();
+            int width = (int)ResourcesModule.TileWidth(count, false) + 12;
+            var tile = new Rectangle(0, 8, width, 34);
+            using (var background = new SolidBrush(StripSettings.PopupColor(settings.Background, settings.Alpha)))
+                e.Graphics.FillRectangle(background, tile);
+            ResourcesModule.DrawTile(e.Graphics, new RectangleF(6, 10, width - 12, 30), reading, settings);
+            ResourcePanel.Draw(e.Graphics, new Rectangle(0, 60, Width, Math.Max(0, Height - 60)), reading, settings);
+        }
+    }
+}
+
 internal sealed class SettingsWindow : Form
 {
     private readonly Strip strip;
@@ -153,7 +354,6 @@ internal sealed class SettingsWindow : Form
         alpha = Number("Фон", 35, 100);
     private readonly CheckBox numericIcon = new CheckBox { Text = "Показувати число на іконці трея", AutoSize = true };
     private readonly CheckBox resources = new CheckBox { Text = "Ресурси ПК", AutoSize = true };
-    private readonly CheckBox resourcesIconOnly = new CheckBox { Text = "Лише іконка ресурсів", AutoSize = true };
     private readonly CheckBox startup = new CheckBox { Text = "Запускати разом із Windows", AutoSize = true };
     private readonly CheckedListBox devices = new CheckedListBox { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
     private readonly ComboBox displayMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
@@ -166,6 +366,8 @@ internal sealed class SettingsWindow : Form
     private readonly TextBox[] hex = new TextBox[4];
     private readonly Button[] palette = new Button[4];
     private readonly Preview preview;
+    private readonly TabPage generalPage = new TabPage(), resourcePage = new TabPage();
+    private readonly ResourceEditor resourceEditor;
     private bool loading;
 
     internal SettingsWindow(Strip owner)
@@ -224,19 +426,11 @@ internal sealed class SettingsWindow : Form
         }
         column.Controls.Add(numericIcon);
         column.Controls.Add(resources);
-        column.Controls.Add(resourcesIconOnly);
         column.Controls.Add(startup);
         resources.CheckedChanged += (sender, args) =>
         {
             if (loading) return;
             strip.Current.ResourcesEnabled = resources.Checked;
-            resourcesIconOnly.Enabled = resources.Checked;
-            strip.ApplySettings();
-        };
-        resourcesIconOnly.CheckedChanged += (sender, args) =>
-        {
-            if (loading) return;
-            strip.Current.ResourcesIconOnly = resourcesIconOnly.Checked;
             strip.ApplySettings();
         };
         numericIcon.CheckedChanged += (sender, args) =>
@@ -285,8 +479,19 @@ internal sealed class SettingsWindow : Form
         languageRow.Margin = new Padding(0, 0, 0, 8);
         root.Controls.Add(languageRow, 0, 0);
         root.SetColumnSpan(languageRow, 2);
-        root.Controls.Add(column, 0, 1);
-        root.Controls.Add(previewArea, 1, 1);
+        var general = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Padding = new Padding(6) };
+        general.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 338));
+        general.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        general.Controls.Add(column, 0, 0);
+        general.Controls.Add(previewArea, 1, 0);
+        generalPage.Controls.Add(general);
+        resourceEditor = new ResourceEditor(strip, ValidateColors) { Dock = DockStyle.Fill };
+        resourcePage.Controls.Add(resourceEditor);
+        generalPage.BackColor = resourcePage.BackColor = BackColor;
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        tabs.TabPages.AddRange(new[] { generalPage, resourcePage });
+        root.Controls.Add(tabs, 0, 1);
+        root.SetColumnSpan(tabs, 2);
 
         var footer = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
         var cancel = ButtonFor("Скасувати");
@@ -329,8 +534,6 @@ internal sealed class SettingsWindow : Form
         var settings = strip.Current;
         numericIcon.Checked = settings.NumericTrayIcon;
         resources.Checked = settings.ResourcesEnabled;
-        resourcesIconOnly.Checked = settings.ResourcesIconOnly;
-        resourcesIconOnly.Enabled = settings.ResourcesEnabled;
         zoom.Value = settings.Zoom;
         gap.Value = settings.Gap;
         alpha.Value = settings.Alpha;
@@ -349,6 +552,7 @@ internal sealed class SettingsWindow : Form
         if (loading) return;
         RebuildDevices(false);
         preview.Invalidate();
+        resourceEditor.RefreshPreview();
     }
 
     private string Translate(string text)
@@ -378,7 +582,10 @@ internal sealed class SettingsWindow : Form
         loading = true;
         string code = strip.Current.Language;
         Text = Translate("Налаштування");
+        generalPage.Text = Translate("Загальні");
+        resourcePage.Text = Translate("Ресурси ПК");
         foreach (var caption in captions) caption(code);
+        resourceEditor.Sync();
         for (int i = 0; i < hex.Length; i++)
         {
             string name = Translate(ColorNames[i]);
@@ -455,7 +662,7 @@ internal sealed class SettingsWindow : Form
 
     private void ValidateColors()
     {
-        bool valid = true;
+        bool valid = resourceEditor.ValidateColor();
         for (int i = 0; i < hex.Length; i++)
         {
             Color color;

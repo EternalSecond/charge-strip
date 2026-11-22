@@ -9,6 +9,16 @@ internal static class Localize
     private static readonly Dictionary<string, string[]> Translations = new Dictionary<string, string[]>
     {
         { "Ресурси ПК", new[] { "Ресурсы ПК", "PC Resources" } },
+        { "Загальні", new[] { "Общие", "General" } },
+        { "На смужці", new[] { "На полоске", "On the strip" } },
+        { "У панелі", new[] { "В панели", "In the panel" } },
+        { "Вигляд панелі", new[] { "Вид панели", "Panel style" } },
+        { "Колір шкал", new[] { "Цвет шкал", "Scale color" } },
+        { "Цифри", new[] { "Цифры", "Numbers" } },
+        { "Цифри + шкала", new[] { "Цифры + шкала", "Numbers + bars" } },
+        { "Диск", new[] { "Диск", "Disk" } },
+        { "Показники не вибрано", new[] { "Показатели не выбраны", "No metrics selected" } },
+        { "Попередній перегляд", new[] { "Предпросмотр", "Preview" } },
         { "Лише іконка ресурсів", new[] { "Только значок ресурсов", "Resources icon only" } },
         { "Системний диск", new[] { "Системный диск", "System drive" } },
         { "Завантаження", new[] { "Загрузка", "Download" } },

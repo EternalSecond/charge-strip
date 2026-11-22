@@ -8,6 +8,11 @@ internal static class Localize
 
     private static readonly Dictionary<string, string[]> Translations = new Dictionary<string, string[]>
     {
+        { "Ресурси ПК", new[] { "Ресурсы ПК", "PC Resources" } },
+        { "Лише іконка ресурсів", new[] { "Только значок ресурсов", "Resources icon only" } },
+        { "Системний диск", new[] { "Системный диск", "System drive" } },
+        { "Завантаження", new[] { "Загрузка", "Download" } },
+        { "Віддача", new[] { "Отдача", "Upload" } },
         { "Мова", new[] { "Язык", "Language" } },
         { "Налаштування", new[] { "Настройки", "Settings" } },
         { "Розмір і вигляд", new[] { "Размер и внешний вид", "Size and appearance" } },

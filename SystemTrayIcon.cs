@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 internal sealed class SystemTrayIcon : NativeWindow, IDisposable
 {
-    private const uint IconId = 1;
+    private readonly uint iconId;
     private const uint IconMessage = 0x8001;
     private const uint IconFlags = 0x0001 | 0x0002 | 0x0004 | 0x0080; // message, icon, tooltip, show tooltip
     private const int Select = 0x400, KeySelect = 0x401, ContextMenu = 0x007b;
@@ -17,9 +17,10 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
     public event Action Activated;
     public event Action MenuRequested;
 
-    internal SystemTrayIcon()
+    internal SystemTrayIcon(uint id = 1, string caption = "Charge Strip notification icon")
     {
-        CreateHandle(new CreateParams { Caption = "Charge Strip notification icon" });
+        iconId = id;
+        CreateHandle(new CreateParams { Caption = caption });
     }
 
     internal void Update(Icon next, string text)
@@ -49,7 +50,7 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
     {
         get
         {
-            var identifier = new Identifier { Size = (uint)Marshal.SizeOf(typeof(Identifier)), Window = Handle, Id = IconId };
+            var identifier = new Identifier { Size = (uint)Marshal.SizeOf(typeof(Identifier)), Window = Handle, Id = iconId };
             Rect rect;
             return Shell_NotifyIconGetRect(ref identifier, out rect) == 0
                 ? Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom) : Rectangle.Empty;
@@ -103,7 +104,7 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
     {
         return new Data
         {
-            Size = (uint)Marshal.SizeOf(typeof(Data)), Window = Handle, Id = IconId,
+            Size = (uint)Marshal.SizeOf(typeof(Data)), Window = Handle, Id = iconId,
             Flags = IconFlags, Callback = IconMessage, Icon = icon == null ? IntPtr.Zero : icon.Handle,
             Tip = tooltip.Length < 128 ? tooltip : tooltip.Substring(0, 127)
         };

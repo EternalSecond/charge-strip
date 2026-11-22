@@ -42,6 +42,7 @@ internal sealed class Strip : ApplicationContext
     private static readonly Color Muted = Color.FromArgb(174, 183, 196);
     private readonly ContextMenuStrip details = new ContextMenuStrip();
     private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
+    private readonly ResourcesModule resources;
     private readonly SystemTrayIcon tray = new SystemTrayIcon();
     private readonly Font popupHeaderFont = new Font("Segoe UI", 10, FontStyle.Bold);
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 12000 };
@@ -61,6 +62,7 @@ internal sealed class Strip : ApplicationContext
     public Strip(EventWaitHandle openRequest, bool launchEditor)
     {
         saved = StripSettings.Load() ?? new StripSettings();
+        resources = new ResourcesModule(() => Current, () => details.Close(), OpenSettings);
         details.ShowImageMargin = false;
         details.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
         details.ForeColor = TextColor;
@@ -79,6 +81,7 @@ internal sealed class Strip : ApplicationContext
         tray.Activated += () => OpenDetails(tray.PopupAnchor());
         tray.MenuRequested += () =>
         {
+            resources.Close();
             details.Close();
             tray.PrepareMenu();
             trayMenu.Show(tray.PopupAnchor(), ToolStripDropDownDirection.AboveLeft);
@@ -132,6 +135,7 @@ internal sealed class Strip : ApplicationContext
         tray.Update(trayIcon, hint);
         if (previous != null) previous.Dispose();
         FillDetails();
+        resources.Apply();
         if (editor != null) editor.SyncReadings();
     }
 
@@ -183,6 +187,7 @@ internal sealed class Strip : ApplicationContext
 
     internal void OpenSettings()
     {
+        resources.Close();
         details.Close();
         if (editor == null)
         {
@@ -269,6 +274,7 @@ internal sealed class Strip : ApplicationContext
 
     internal void OpenDetails(Point point)
     {
+        resources.Close();
         if (details.Visible) { details.Close(); return; }
         tray.PrepareMenu();
         details.Show(point, ToolStripDropDownDirection.AboveLeft);
@@ -368,6 +374,7 @@ internal sealed class Strip : ApplicationContext
             if (editor != null) editor.Dispose();
             timer.Dispose();
             inputTimer.Dispose();
+            resources.Dispose();
             details.Dispose();
             popupHeaderFont.Dispose();
             tray.Dispose();

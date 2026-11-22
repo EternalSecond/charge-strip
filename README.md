@@ -32,6 +32,12 @@ The portable executable is unsigned. Windows may display a publisher warning. To
 
 Choose **УКР**, **РУС**, or **ENG** at the top of Settings to switch between Ukrainian, Russian, and English. The interface updates immediately. Select **Save** to keep the language, or **Cancel** to revert. Readings refresh in the background about every 12 seconds.
 
+## PC Resources
+
+Click the chip icon beside the battery icon to open **PC Resources**. The chip displays the current CPU percentage by default. Enable **Resources icon only** in Settings to show only the chip, or disable **PC Resources** to hide it. Windows controls icon order and visibility. If the chip starts under **Show hidden icons**, drag it beside the battery icon.
+
+The panel shows CPU load, used and total physical memory, GPU load, system drive usage, and current download and upload rates. GPU summarizes the busiest available hardware engine and shows a dash when Windows supplies no GPU data. Network rates aggregate active non-loopback, non-tunnel interfaces. The panel opens by click and dismisses on Escape or an outside click.
+
 ## Device compatibility
 
 | Device or source | Status |

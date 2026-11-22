@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## 0.6.0
+
+- Added a native tray button for CPU, RAM, GPU, system drive usage, and network throughput.
+- Added a setting to hide the module or show only its chip icon.
+
 ## 0.5.2
 
 - Anchor the battery popup to the native Windows tray icon.

@@ -19,6 +19,7 @@ public sealed class StripSettings
     public int MaxDevices = 5, DisplayMode;
     public string Language = "uk";
     public bool NumericTrayIcon;
+    public bool ResourcesEnabled = true, ResourcesIconOnly;
 
     internal List<BatteryReading> Selected(IEnumerable<BatteryReading> readings)
     {
@@ -151,6 +152,8 @@ internal sealed class SettingsWindow : Form
     private readonly NumericUpDown zoom = Number("Масштаб", 60, 175), gap = Number("Відступ", 0, 24),
         alpha = Number("Фон", 35, 100);
     private readonly CheckBox numericIcon = new CheckBox { Text = "Показувати число на іконці трея", AutoSize = true };
+    private readonly CheckBox resources = new CheckBox { Text = "Ресурси ПК", AutoSize = true };
+    private readonly CheckBox resourcesIconOnly = new CheckBox { Text = "Лише іконка ресурсів", AutoSize = true };
     private readonly CheckBox startup = new CheckBox { Text = "Запускати разом із Windows", AutoSize = true };
     private readonly CheckedListBox devices = new CheckedListBox { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
     private readonly ComboBox displayMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
@@ -220,7 +223,22 @@ internal sealed class SettingsWindow : Form
             startup.Enabled = false;
         }
         column.Controls.Add(numericIcon);
+        column.Controls.Add(resources);
+        column.Controls.Add(resourcesIconOnly);
         column.Controls.Add(startup);
+        resources.CheckedChanged += (sender, args) =>
+        {
+            if (loading) return;
+            strip.Current.ResourcesEnabled = resources.Checked;
+            resourcesIconOnly.Enabled = resources.Checked;
+            strip.ApplySettings();
+        };
+        resourcesIconOnly.CheckedChanged += (sender, args) =>
+        {
+            if (loading) return;
+            strip.Current.ResourcesIconOnly = resourcesIconOnly.Checked;
+            strip.ApplySettings();
+        };
         numericIcon.CheckedChanged += (sender, args) =>
         {
             if (loading) return;
@@ -310,6 +328,9 @@ internal sealed class SettingsWindow : Form
         loading = true;
         var settings = strip.Current;
         numericIcon.Checked = settings.NumericTrayIcon;
+        resources.Checked = settings.ResourcesEnabled;
+        resourcesIconOnly.Checked = settings.ResourcesIconOnly;
+        resourcesIconOnly.Enabled = settings.ResourcesEnabled;
         zoom.Value = settings.Zoom;
         gap.Value = settings.Gap;
         alpha.Value = settings.Alpha;

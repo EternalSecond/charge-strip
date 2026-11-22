@@ -44,6 +44,7 @@ internal sealed class Strip : ApplicationContext
     private readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
     private readonly ResourcesModule resources;
     private readonly MediaModule media;
+    private readonly ModuleStrip surface;
     private readonly SystemTrayIcon tray = new SystemTrayIcon();
     private readonly Font popupHeaderFont = new Font("Segoe UI", 10, FontStyle.Bold);
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 12000 };
@@ -65,6 +66,9 @@ internal sealed class Strip : ApplicationContext
         saved = StripSettings.Load() ?? new StripSettings();
         resources = new ResourcesModule(() => Current, () => { details.Close(); if (media != null) media.Close(); }, OpenSettings);
         media = new MediaModule(() => Current, () => { details.Close(); resources.Close(); });
+        surface = new ModuleStrip(this);
+        media.Changed += () => { surface.UpdateDrawing(); if (editor != null) editor.SyncReadings(); };
+        resources.Changed += () => { surface.UpdateDrawing(); if (editor != null) editor.SyncReadings(); };
         details.ShowImageMargin = false;
         details.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
         details.ForeColor = TextColor;
@@ -137,8 +141,45 @@ internal sealed class Strip : ApplicationContext
         tray.Update(trayIcon, hint);
         if (previous != null) previous.Dispose();
         FillDetails();
-        resources.Apply();
+        SyncModuleSurface();
         if (editor != null) editor.SyncReadings();
+    }
+
+    internal MediaSnapshot MediaSnapshot { get { return media.Snapshot; } }
+    internal Bitmap MediaArtwork { get { return media.Artwork; } }
+    internal ResourceReading ResourceReading { get { return resources.Reading; } }
+
+    internal void SyncModuleSurface()
+    {
+        if (disposed) return;
+        bool fallback = !surface.Arrange() && surface.IsMeasured;
+        tray.SetVisible(Current.ModuleVisible("batteries") && fallback);
+        resources.Apply(fallback);
+        media.Apply(Current.ModuleVisible("media"), fallback);
+    }
+
+    internal string ModuleHint(string id)
+    {
+        if (id == "media" && !string.IsNullOrWhiteSpace(media.Snapshot.Title))
+            return media.Snapshot.Title + (string.IsNullOrWhiteSpace(media.Snapshot.Artist) ? "" : " · " + media.Snapshot.Artist);
+        if (id == "resources") return Translate("Ресурси ПК") + " · CPU " + ResourcePanel.Percent(resources.Reading.Cpu);
+        return Translate(StripSettings.ModuleLabel(id));
+    }
+
+    internal void OpenModule(string id, Rectangle anchor)
+    {
+        if (id == "media") media.Open(anchor);
+        else if (id == "resources") resources.Open(anchor);
+        else OpenDetails(new Point(anchor.Right, anchor.Top - 5));
+    }
+
+    internal void SaveModulePosition(string monitor, int x)
+    {
+        var target = draft ?? saved.Copy();
+        target.StripMonitor = monitor;
+        target.StripX = x;
+        if (draft == null && Save(target)) saved = target;
+        ApplySettings();
     }
 
     internal static Icon CreateTrayIcon(int? percent, Color accent, bool numeric)
@@ -378,6 +419,7 @@ internal sealed class Strip : ApplicationContext
             if (editor != null) editor.Dispose();
             timer.Dispose();
             inputTimer.Dispose();
+            surface.Dispose();
             resources.Dispose();
             media.Dispose();
             details.Dispose();

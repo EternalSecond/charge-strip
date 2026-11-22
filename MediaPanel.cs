@@ -11,6 +11,7 @@ internal sealed class MediaModule : IDisposable
     private readonly Action dismissOthers;
     private readonly Timer timer = new Timer { Interval = 250 };
     private MediaService service;
+    private bool standalone;
     private SystemTrayIcon icon;
     private Icon note;
     private MediaCard panel;
@@ -24,12 +25,40 @@ internal sealed class MediaModule : IDisposable
     {
         this.preferences = preferences;
         this.dismissOthers = dismissOthers;
-        service = new MediaService();
-        icon = new SystemTrayIcon(3, "Charge Strip Media");
-        note = CreateNote();
-        icon.Activated += () => Open(icon.Bounds);
         timer.Tick += (sender, args) => Update();
-        timer.Start();
+    }
+
+    internal void Apply(bool enabled, bool useTray)
+    {
+        if (!enabled)
+        {
+            Close();
+            timer.Stop();
+            if (icon != null) { icon.Dispose(); icon = null; }
+            if (service != null) { service.Dispose(); service = null; }
+            if (Artwork != null) { Artwork.Dispose(); Artwork = null; }
+            snapshot = new MediaSnapshot();
+            decodedArtwork = null;
+            standalone = false;
+            return;
+        }
+        if (service == null)
+        {
+            service = new MediaService();
+            timer.Start();
+        }
+        if (standalone != useTray || useTray && icon == null)
+        {
+            standalone = useTray;
+            if (useTray)
+            {
+                if (note == null) note = CreateNote();
+                icon = new SystemTrayIcon(3, "Charge Strip Media");
+                icon.Activated += () => Open(icon.Bounds);
+                icon.Update(note, L("Медіа"));
+            }
+            else if (icon != null) { icon.Dispose(); icon = null; }
+        }
         Update();
     }
 
@@ -49,6 +78,7 @@ internal sealed class MediaModule : IDisposable
 
     private void Update()
     {
+        if (service == null) return;
         var next = service.Current;
         if (!ReferenceEquals(snapshot, next))
         {
@@ -105,7 +135,7 @@ internal sealed class MediaModule : IDisposable
         if (icon != null) icon.Dispose();
         if (note != null) note.Dispose();
         if (Artwork != null) Artwork.Dispose();
-        service.Dispose();
+        if (service != null) service.Dispose();
     }
 }
 

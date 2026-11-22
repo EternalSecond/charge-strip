@@ -43,7 +43,7 @@ internal sealed class ModuleStrip : Form
         get
         {
             var p = base.CreateParams;
-            p.ExStyle |= 0x80000 | 0x80 | 0x08000000; // Layered tool window, no activation.
+            p.ExStyle |= 0x80000 | 0x80; // Layered tool window.
             return p;
         }
     }

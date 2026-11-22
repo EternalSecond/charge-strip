@@ -8,6 +8,18 @@ internal static class Localize
 
     private static readonly Dictionary<string, string[]> Translations = new Dictionary<string, string[]>
     {
+        { "Батареї", new[] { "Батареи", "Batteries" } },
+        { "Модулі смужки", new[] { "Модули полоски", "Strip modules" } },
+        { "Перетягніть смужку", new[] { "Перетащите полоску", "Drag to move the strip" } },
+        { "Скинути позицію", new[] { "Сбросить положение", "Reset position" } },
+        { "Медіа", new[] { "Медиа", "Media" } },
+        { "Джерело медіа", new[] { "Источник медиа", "Media source" } },
+        { "Позиція відтворення", new[] { "Позиция воспроизведения", "Playback position" } },
+        { "Попередній", new[] { "Предыдущий", "Previous" } },
+        { "Наступний", new[] { "Следующий", "Next" } },
+        { "Відтворити", new[] { "Воспроизвести", "Play" } },
+        { "Пауза", new[] { "Пауза", "Pause" } },
+        { "Немає активного медіа", new[] { "Нет активного медиа", "No active media" } },
         { "Ресурси ПК", new[] { "Ресурсы ПК", "PC Resources" } },
         { "Загальні", new[] { "Общие", "General" } },
         { "На смужці", new[] { "На полоске", "On the strip" } },
@@ -18,8 +30,8 @@ internal static class Localize
         { "Цифри + шкала", new[] { "Цифры + шкала", "Numbers + bars" } },
         { "Диск", new[] { "Диск", "Disk" } },
         { "Показники не вибрано", new[] { "Показатели не выбраны", "No metrics selected" } },
+        { "Модуль вимкнено", new[] { "Модуль отключён", "Module is off" } },
         { "Попередній перегляд", new[] { "Предпросмотр", "Preview" } },
-        { "Лише іконка ресурсів", new[] { "Только значок ресурсов", "Resources icon only" } },
         { "Системний диск", new[] { "Системный диск", "System drive" } },
         { "Завантаження", new[] { "Загрузка", "Download" } },
         { "Віддача", new[] { "Отдача", "Upload" } },

@@ -45,6 +45,29 @@ public sealed class StripSettings
 
     internal Color ScaleColor { get { return ColorOf(ResourceScaleColor ?? Icons); } }
 
+    internal static readonly string[] ModuleIds = { "batteries", "media", "resources" };
+    public string[] ModuleOrder = (string[])ModuleIds.Clone();
+    public string[] HiddenModules = new string[0];
+    public int? StripX;
+    public string StripMonitor = "";
+    // Old overlay settings are read for migration.
+    [XmlElement("X")] public int? LegacyX;
+    [XmlElement("Monitor")] public string LegacyMonitor;
+    [XmlElement("Automatic")] public bool LegacyAutomatic = true;
+    public bool ShouldSerializeLegacyX() { return false; }
+    public bool ShouldSerializeLegacyMonitor() { return false; }
+    public bool ShouldSerializeLegacyAutomatic() { return false; }
+
+    internal bool ModuleVisible(string id)
+    {
+        return (id != "resources" || ResourcesEnabled) && !HiddenModules.Contains(id);
+    }
+
+    internal static string ModuleLabel(string id)
+    {
+        return id == "batteries" ? "Батареї" : id == "resources" ? "Ресурси ПК" : "Медіа";
+    }
+
     internal List<BatteryReading> Selected(IEnumerable<BatteryReading> readings)
     {
         return Ordered(readings).Where(row => !HiddenDevices.Contains(row.Name)).ToList();
@@ -100,6 +123,13 @@ public sealed class StripSettings
                 settings.Gap = Clamp(settings.Gap, 0, 24);
                 settings.Alpha = Clamp(settings.Alpha, 35, 100);
                 if (Array.IndexOf(Localize.Languages, settings.Language) < 0) settings.Language = "uk";
+                settings.ModuleOrder = (settings.ModuleOrder ?? ModuleIds).Where(ModuleIds.Contains).Distinct().Concat(ModuleIds).Distinct().ToArray();
+                settings.HiddenModules = (settings.HiddenModules ?? new string[0]).Where(ModuleIds.Contains).Distinct().ToArray();
+                if (!settings.StripX.HasValue && !settings.LegacyAutomatic && settings.LegacyX.HasValue)
+                {
+                    settings.StripX = settings.LegacyX;
+                    settings.StripMonitor = settings.LegacyMonitor ?? "";
+                }
                 settings.MaxDevices = Clamp(settings.MaxDevices, 1, 12);
                 settings.DisplayMode = Clamp(settings.DisplayMode, 0, 2);
                 settings.HiddenDevices = settings.HiddenDevices ?? new string[0];
@@ -246,7 +276,7 @@ internal sealed class ResourceEditor : UserControl
     {
         options.Controls.Add(Heading(caption));
         var group = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
-        var list = new CheckedListBox { Width = 236, Height = 114, IntegralHeight = false, FormattingEnabled = true,
+        var list = new MetricList { Width = 236, Height = 114, IntegralHeight = false, FormattingEnabled = true,
             AccessibleName = caption };
         var arrows = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.TopDown, Margin = Padding.Empty };
         foreach (int delta in new[] { -1, 1 })
@@ -324,7 +354,39 @@ internal sealed class ResourceEditor : UserControl
         return valid;
     }
 
-    internal void RefreshPreview() { preview.Invalidate(); }
+    internal void RefreshPreview()
+    {
+        if (!loading && owner.Current.ResourceScaleColor == null && ValidateColor())
+        {
+            loading = true;
+            hex.Text = owner.Current.Icons;
+            loading = false;
+        }
+        preview.Invalidate();
+    }
+
+    private sealed class MetricList : CheckedListBox
+    {
+        private bool selecting;
+
+        internal MetricList() { CheckOnClick = true; }
+
+        // A click on the name selects a row for the arrows; the check box and Space change visibility.
+        protected override void WndProc(ref Message message)
+        {
+            bool mouse = message.Msg == 0x0201 || message.Msg == 0x0202 || message.Msg == 0x0203;
+            bool previous = selecting;
+            if (mouse) selecting = unchecked((short)message.LParam.ToInt64()) >= 18 * DeviceDpi / 96;
+            try { base.WndProc(ref message); }
+            finally { selecting = previous; }
+        }
+
+        protected override void OnItemCheck(ItemCheckEventArgs e)
+        {
+            if (selecting) e.NewValue = e.CurrentValue;
+            else base.OnItemCheck(e);
+        }
+    }
 
     private sealed class ResourcePreview : Control
     {
@@ -335,6 +397,11 @@ internal sealed class ResourceEditor : UserControl
         {
             base.OnPaint(e);
             var settings = owner.Current;
+            if (!settings.ModuleVisible("resources"))
+            {
+                TextRenderer.DrawText(e.Graphics, owner.Translate("Модуль вимкнено"), Font, new Point(0, 8), ForeColor);
+                return;
+            }
             var reading = owner.ResourceReading;
             int count = settings.VisibleMetrics(true).Count();
             int width = (int)ResourcesModule.TileWidth(count, false) + 12;
@@ -353,8 +420,8 @@ internal sealed class SettingsWindow : Form
     private readonly NumericUpDown zoom = Number("Масштаб", 60, 175), gap = Number("Відступ", 0, 24),
         alpha = Number("Фон", 35, 100);
     private readonly CheckBox numericIcon = new CheckBox { Text = "Показувати число на іконці трея", AutoSize = true };
-    private readonly CheckBox resources = new CheckBox { Text = "Ресурси ПК", AutoSize = true };
     private readonly CheckBox startup = new CheckBox { Text = "Запускати разом із Windows", AutoSize = true };
+    private readonly CheckedListBox modules = new CheckedListBox { CheckOnClick = true, IntegralHeight = false, Width = 217, Height = 62 };
     private readonly CheckedListBox devices = new CheckedListBox { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
     private readonly ComboBox displayMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
     private readonly NumericUpDown maxDevices = Number("Ліміт пристроїв", 1, 12);
@@ -381,7 +448,7 @@ internal sealed class SettingsWindow : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(780, 510);
+        ClientSize = new Size(780, 614);
         BackColor = Color.FromArgb(24, 30, 41);
         ForeColor = Color.FromArgb(229, 237, 247);
         StartPosition = FormStartPosition.CenterScreen;
@@ -425,12 +492,38 @@ internal sealed class SettingsWindow : Form
             startup.Enabled = false;
         }
         column.Controls.Add(numericIcon);
-        column.Controls.Add(resources);
+        column.Controls.Add(Heading("Модулі смужки"));
+        modules.AccessibleName = "Модулі смужки";
+        var moduleLayout = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
+        moduleLayout.Controls.Add(modules);
+        var arrows = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
+        Button earlier = ButtonFor("↑"), later = ButtonFor("↓");
+        earlier.AutoSize = later.AutoSize = false;
+        earlier.Size = later.Size = new Size(34, 27);
+        earlier.AccessibleName = "Вище";
+        later.AccessibleName = "Нижче";
+        earlier.Click += (sender, args) => MoveModule(-1);
+        later.Click += (sender, args) => MoveModule(1);
+        arrows.Controls.AddRange(new Control[] { earlier, later });
+        moduleLayout.Controls.Add(arrows);
+        column.Controls.Add(moduleLayout);
+        var resetPosition = ButtonFor("Скинути позицію");
+        resetPosition.Click += (sender, args) =>
+        {
+            strip.Current.StripX = null;
+            strip.Current.StripMonitor = "";
+            strip.ApplySettings();
+        };
+        column.Controls.Add(resetPosition);
         column.Controls.Add(startup);
-        resources.CheckedChanged += (sender, args) =>
+        modules.ItemCheck += (sender, args) =>
         {
             if (loading) return;
-            strip.Current.ResourcesEnabled = resources.Checked;
+            string id = (string)modules.Items[args.Index];
+            var hidden = strip.Current.HiddenModules.Where(value => value != id);
+            bool visible = args.NewValue == CheckState.Checked;
+            if (id == "resources") strip.Current.ResourcesEnabled = true;
+            strip.Current.HiddenModules = (visible ? hidden : hidden.Concat(new[] { id })).ToArray();
             strip.ApplySettings();
         };
         numericIcon.CheckedChanged += (sender, args) =>
@@ -503,6 +596,12 @@ internal sealed class SettingsWindow : Form
         Controls.Add(root);
         Style(root);
         BindCaptions(root);
+        modules.FormattingEnabled = true;
+        modules.Format += (sender, args) =>
+        {
+            string id = (string)args.ListItem;
+            args.Value = (Array.IndexOf(strip.Current.ModuleOrder, id) + 1) + " · " + Translate(StripSettings.ModuleLabel(id));
+        };
         devices.FormattingEnabled = true;
         devices.Format += (sender, args) => args.Value = Translate((string)args.ListItem);
         language.SelectedIndexChanged += (sender, args) =>
@@ -533,7 +632,6 @@ internal sealed class SettingsWindow : Form
         loading = true;
         var settings = strip.Current;
         numericIcon.Checked = settings.NumericTrayIcon;
-        resources.Checked = settings.ResourcesEnabled;
         zoom.Value = settings.Zoom;
         gap.Value = settings.Gap;
         alpha.Value = settings.Alpha;
@@ -595,8 +693,36 @@ internal sealed class SettingsWindow : Form
         displayMode.Items.Clear();
         displayMode.Items.AddRange(new object[] { Translate("Іконка + %"), Translate("Тільки іконка"), Translate("Тільки %") });
         displayMode.SelectedIndex = strip.Current.DisplayMode;
+        RebuildModules();
         RebuildDevices(true);
         loading = previous;
+    }
+
+    private void RebuildModules()
+    {
+        bool old = loading;
+        loading = true;
+        string selected = modules.SelectedItem as string;
+        modules.BeginUpdate();
+        modules.Items.Clear();
+        foreach (string id in strip.Current.ModuleOrder) modules.Items.Add(id, strip.Current.ModuleVisible(id));
+        if (selected != null) modules.SelectedItem = selected;
+        modules.EndUpdate();
+        loading = old;
+    }
+
+    private void MoveModule(int delta)
+    {
+        int index = modules.SelectedIndex;
+        int target = index + delta;
+        if (index < 0 || target < 0 || target >= modules.Items.Count) return;
+        var order = (string[])strip.Current.ModuleOrder.Clone();
+        string swapped = order[target];
+        order[target] = order[index];
+        order[index] = swapped;
+        strip.Current.ModuleOrder = order;
+        RebuildModules();
+        strip.ApplySettings();
     }
 
     private void RebuildDevices(bool force)
@@ -731,8 +857,6 @@ internal sealed class SettingsWindow : Form
             base.OnPaint(e);
             var settings = owner.Current;
             var rows = owner.Readings;
-            var first = rows.FirstOrDefault();
-            Color fine = StripSettings.ColorOf(first != null && first.Percent <= 25 ? settings.Low : settings.Icons);
             Color body = StripSettings.PopupColor(settings.Background, settings.Alpha);
             var canvas = ClientRectangle;
             if (canvas.Width < 2 || canvas.Height < 2) return;
@@ -742,12 +866,12 @@ internal sealed class SettingsWindow : Form
             using (var border = new Pen(Color.FromArgb(105, 143, 165, 190)))
             using (var title = new Font("Segoe UI", 10, FontStyle.Bold))
             using (var label = new Font("Segoe UI", 9))
-            using (var icon = Strip.CreateTrayIcon(first == null ? null : first.Percent, fine, settings.NumericTrayIcon))
             {
                 e.Graphics.FillRectangle(backdrop, canvas);
                 var tray = new Rectangle(0, canvas.Bottom - 34, canvas.Width, 34);
                 e.Graphics.FillRectangle(bar, tray);
-                e.Graphics.DrawIcon(icon, new Rectangle(tray.Right - 78, tray.Top + 4, 25, 25));
+                int width = Math.Min(tray.Width - 66, 288);
+                ModuleStrip.Draw(e.Graphics, new Rectangle(tray.Right - width - 51, tray.Top + 1, width, 32), owner);
                 TextRenderer.DrawText(e.Graphics, "22:41", label, new Point(tray.Right - 48, tray.Top + 8), Color.WhiteSmoke);
                 int count = Math.Min(rows.Count, 3);
                 var popup = new Rectangle(16, 10, canvas.Width - 32, 37 + Math.Max(1, count) * 29);

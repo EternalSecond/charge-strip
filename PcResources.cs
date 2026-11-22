@@ -312,11 +312,11 @@ internal sealed class ResourcesModule : IDisposable
         timer.Tick += async (sender, args) => await Sample();
     }
 
-    internal void Apply()
+    internal void Apply(bool useTray)
     {
         if (disposed) return;
         var current = settings();
-        if (!current.ResourcesEnabled)
+        if (!current.ModuleVisible("resources"))
         {
             Close();
             SelectMetrics(ResourceMetric.None);
@@ -325,14 +325,15 @@ internal sealed class ResourcesModule : IDisposable
             iconKey = null;
             return;
         }
-        if (tray == null)
+        if (useTray && tray == null)
         {
             tray = new SystemTrayIcon(2, "Charge Strip PC Resources");
-            tray.Activated += Toggle;
+            tray.Activated += () => Open(tray.Bounds);
             tray.MenuRequested += () => { Close(); openSettings(); };
         }
+        else if (!useTray && tray != null) { tray.Dispose(); tray = null; }
         SelectMetrics(ResourceMetrics.All & ~(current.HiddenMetrics(true) & current.HiddenMetrics(false)));
-        UpdateIcon(current);
+        if (tray != null) UpdateIcon(current);
         if (panel != null) panel.UpdateReading(reading, current);
     }
 
@@ -469,15 +470,14 @@ internal sealed class ResourcesModule : IDisposable
         }
     }
 
-    private void Toggle()
+    internal void Open(Rectangle bounds)
     {
         if (panel != null) { Close(); return; }
         dismissBattery();
-        var bounds = tray.Bounds;
         if (bounds.IsEmpty) bounds = new Rectangle(Cursor.Position, new Size(1, 1));
         panel = new ResourcePanel(reading, settings(), bounds);
         panel.FormClosed += (sender, args) => { if (ReferenceEquals(panel, sender)) panel = null; };
-        tray.PrepareMenu();
+        if (tray != null) tray.PrepareMenu();
         panel.Show();
         if (panel != null) panel.Activate();
     }

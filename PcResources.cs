@@ -10,10 +10,91 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 
+[Flags]
+public enum ResourceMetric { None = 0, Cpu = 1, Ram = 2, Gpu = 4, Disk = 8, Download = 16, Upload = 32 }
+
+internal static class ResourceMetrics
+{
+    internal const ResourceMetric All = ResourceMetric.Cpu | ResourceMetric.Ram | ResourceMetric.Gpu |
+        ResourceMetric.Disk | ResourceMetric.Download | ResourceMetric.Upload;
+    internal static readonly ResourceMetric[] DefaultOrder = { ResourceMetric.Cpu, ResourceMetric.Ram, ResourceMetric.Gpu,
+        ResourceMetric.Disk, ResourceMetric.Download, ResourceMetric.Upload };
+
+    internal static ResourceMetric[] Normalize(ResourceMetric[] order)
+    {
+        return (order ?? DefaultOrder).Where(DefaultOrder.Contains).Concat(DefaultOrder).Distinct().ToArray();
+    }
+
+    internal static string Label(ResourceMetric metric)
+    {
+        switch (metric)
+        {
+            case ResourceMetric.Cpu: return "CPU";
+            case ResourceMetric.Ram: return "RAM";
+            case ResourceMetric.Gpu: return "GPU";
+            case ResourceMetric.Disk: return "Системний диск";
+            case ResourceMetric.Download: return "Завантаження";
+            default: return "Віддача";
+        }
+    }
+
+    internal static string ShortLabel(ResourceMetric metric, string language)
+    {
+        if (metric == ResourceMetric.Download) return "↓";
+        if (metric == ResourceMetric.Upload) return "↑";
+        return Localize.Text(language, metric == ResourceMetric.Disk ? "Диск" : Label(metric));
+    }
+}
+
 internal sealed class ResourceReading
 {
     internal double? Cpu, Gpu, Disk, Download, Upload;
+    internal double NetworkCapacity;
     internal ulong? MemoryUsed, MemoryTotal;
+
+    internal double? Percent(ResourceMetric metric)
+    {
+        switch (metric)
+        {
+            case ResourceMetric.Cpu: return Cpu;
+            case ResourceMetric.Gpu: return Gpu;
+            case ResourceMetric.Disk: return Disk;
+            case ResourceMetric.Ram: return MemoryTotal.GetValueOrDefault() > 0 && MemoryUsed.HasValue
+                ? 100.0 * MemoryUsed.Value / MemoryTotal.Value : (double?)null;
+            default: return null;
+        }
+    }
+
+    internal double? Rate(ResourceMetric metric)
+    {
+        return metric == ResourceMetric.Download ? Download : Upload;
+    }
+
+    internal string Value(ResourceMetric metric, bool compact)
+    {
+        if (metric == ResourceMetric.Download || metric == ResourceMetric.Upload)
+        {
+            double? rate = Rate(metric);
+            if (!rate.HasValue) return "—";
+            const double kib = 1024;
+            bool large = rate >= kib * kib;
+            double speed = rate.Value / (large ? kib * kib : kib);
+            return compact ? speed.ToString("0.#") + (large ? "M" : "K")
+                : speed.ToString("0.0") + (large ? " MiB/s" : " KiB/s");
+        }
+        if (metric == ResourceMetric.Ram && !compact && MemoryUsed.HasValue && MemoryTotal.HasValue)
+        {
+            const double gib = 1024.0 * 1024 * 1024;
+            return (MemoryUsed.Value / gib).ToString("0.0") + " / " + (MemoryTotal.Value / gib).ToString("0.0") + " GiB";
+        }
+        double? percent = Percent(metric);
+        return percent.HasValue ? percent.Value.ToString("0") + "%" : "—";
+    }
+
+    internal string Describe(IEnumerable<ResourceMetric> metrics, string language)
+    {
+        return string.Join(", ", metrics.Select(metric => Localize.Text(language, ResourceMetrics.Label(metric)) + " " + Value(metric, false)));
+    }
 }
 
 internal sealed class ResourceSampler : IDisposable
@@ -24,11 +105,14 @@ internal sealed class ResourceSampler : IDisposable
     private Dictionary<string, long[]> previousNetwork = new Dictionary<string, long[]>();
     private readonly GpuSampler gpu = new GpuSampler();
 
-    internal ResourceReading Read()
+    private ResourceMetric lastMetrics;
+
+    internal ResourceReading Read(ResourceMetric metrics)
     {
         var result = new ResourceReading();
         ulong idle, kernel, user;
-        if (GetSystemTimes(out idle, out kernel, out user))
+        if ((metrics & ResourceMetric.Cpu) == 0) hasCpu = false;
+        else if (GetSystemTimes(out idle, out kernel, out user))
         {
             if (hasCpu && idle >= previousIdle && kernel >= previousKernel && user >= previousUser)
             {
@@ -41,29 +125,41 @@ internal sealed class ResourceSampler : IDisposable
             hasCpu = true;
         }
 
-        var memory = new MemoryStatus { Length = (uint)Marshal.SizeOf(typeof(MemoryStatus)) };
-        if (GlobalMemoryStatusEx(ref memory) && memory.TotalPhysical >= memory.AvailablePhysical)
+        if ((metrics & ResourceMetric.Ram) != 0)
         {
-            result.MemoryTotal = memory.TotalPhysical;
-            result.MemoryUsed = memory.TotalPhysical - memory.AvailablePhysical;
+            var memory = new MemoryStatus { Length = (uint)Marshal.SizeOf(typeof(MemoryStatus)) };
+            if (GlobalMemoryStatusEx(ref memory) && memory.TotalPhysical >= memory.AvailablePhysical)
+            {
+                result.MemoryTotal = memory.TotalPhysical;
+                result.MemoryUsed = memory.TotalPhysical - memory.AvailablePhysical;
+            }
         }
 
-        try
+        if ((metrics & ResourceMetric.Disk) != 0)
         {
-            var drive = new DriveInfo(Path.GetPathRoot(Environment.SystemDirectory));
-            long total = drive.TotalSize;
-            if (total > 0) result.Disk = 100 - 100.0 * drive.TotalFreeSpace / total;
+            try
+            {
+                var drive = new DriveInfo(Path.GetPathRoot(Environment.SystemDirectory));
+                long total = drive.TotalSize;
+                if (total > 0) result.Disk = 100 - 100.0 * drive.TotalFreeSpace / total;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
 
-        ReadNetwork(result);
-        result.Gpu = gpu.Read();
+        var network = metrics & (ResourceMetric.Download | ResourceMetric.Upload);
+        if (network != 0) ReadNetwork(result, network);
+        else { previousNetwork.Clear(); previousNetworkTime = 0; }
+        if ((metrics & ResourceMetric.Gpu) != 0) result.Gpu = gpu.Read();
+        else if ((lastMetrics & ResourceMetric.Gpu) != 0) gpu.Dispose();
+        lastMetrics = metrics;
         return result;
     }
 
-    private void ReadNetwork(ResourceReading result)
+    private void ReadNetwork(ResourceReading result, ResourceMetric network)
     {
+        bool download = (network & ResourceMetric.Download) != 0;
+        bool upload = (network & ResourceMetric.Upload) != 0;
         var current = new Dictionary<string, long[]>();
         try
         {
@@ -75,7 +171,8 @@ internal sealed class ResourceSampler : IDisposable
                 try
                 {
                     var stats = adapter.GetIPStatistics();
-                    current[adapter.Id] = new[] { stats.BytesReceived, stats.BytesSent };
+                    current[adapter.Id] = new[] { download ? stats.BytesReceived : 0, upload ? stats.BytesSent : 0 };
+                    result.NetworkCapacity += Math.Max(0, adapter.Speed) / 8.0;
                 }
                 catch (NetworkInformationException) { }
             }
@@ -94,8 +191,8 @@ internal sealed class ResourceSampler : IDisposable
                 up += Math.Max(0, adapter.Value[1] - before[1]);
             }
             double seconds = (now - previousNetworkTime) / (double)Stopwatch.Frequency;
-            result.Download = down / seconds;
-            result.Upload = up / seconds;
+            if (download && (lastMetrics & ResourceMetric.Download) != 0) result.Download = down / seconds;
+            if (upload && (lastMetrics & ResourceMetric.Upload) != 0) result.Upload = up / seconds;
         }
         previousNetwork = current;
         previousNetworkTime = now;
@@ -169,7 +266,8 @@ internal sealed class GpuSampler : IDisposable
     public void Dispose()
     {
         if (query != IntPtr.Zero) PdhCloseQuery(query);
-        query = IntPtr.Zero;
+        query = counter = IntPtr.Zero;
+        sampled = false;
     }
 
     [StructLayout(LayoutKind.Explicit, Size = 24)]
@@ -202,6 +300,9 @@ internal sealed class ResourcesModule : IDisposable
     private ResourcePanel panel;
     private ResourceReading reading = new ResourceReading();
     private bool sampling, disposed;
+    private ResourceMetric wanted;
+    internal ResourceReading Reading { get { return reading; } }
+    internal event Action Changed;
 
     internal ResourcesModule(Func<StripSettings> settings, Action dismissBattery, Action openSettings)
     {
@@ -211,41 +312,54 @@ internal sealed class ResourcesModule : IDisposable
         timer.Tick += async (sender, args) => await Sample();
     }
 
-    internal void Apply()
+    internal void Apply(bool useTray)
     {
         if (disposed) return;
         var current = settings();
-        if (!current.ResourcesEnabled)
+        if (!current.ModuleVisible("resources"))
         {
             Close();
-            timer.Stop();
+            SelectMetrics(ResourceMetric.None);
             if (tray != null) { tray.Dispose(); tray = null; }
             if (icon != null) { icon.Dispose(); icon = null; }
             iconKey = null;
             return;
         }
-        if (tray == null)
+        if (useTray && tray == null)
         {
             tray = new SystemTrayIcon(2, "Charge Strip PC Resources");
-            tray.Activated += Toggle;
+            tray.Activated += () => Open(tray.Bounds);
             tray.MenuRequested += () => { Close(); openSettings(); };
-            timer.Start();
         }
-        UpdateIcon(current);
+        else if (!useTray && tray != null) { tray.Dispose(); tray = null; }
+        SelectMetrics(ResourceMetrics.All & ~(current.HiddenMetrics(true) & current.HiddenMetrics(false)));
+        if (tray != null) UpdateIcon(current);
         if (panel != null) panel.UpdateReading(reading, current);
+    }
+
+    private async void SelectMetrics(ResourceMetric metrics)
+    {
+        if (metrics == wanted) return;
+        wanted = metrics;
+        timer.Enabled = wanted != ResourceMetric.None;
+        await Sample();
     }
 
     private async Task Sample()
     {
-        if (disposed || tray == null || sampling) return;
+        if (disposed || sampling) return;
+        var requested = wanted;
         sampling = true;
         try
         {
-            reading = await Task.Run(() => sampler.Read());
-            if (!disposed && tray != null)
+            var result = await Task.Run(() => sampler.Read(requested));
+            if (!disposed && requested == wanted)
             {
-                UpdateIcon(settings());
-                if (panel != null) panel.UpdateReading(reading, settings());
+                reading = result;
+                var current = settings();
+                if (tray != null) UpdateIcon(current);
+                if (panel != null) panel.UpdateReading(reading, current);
+                if (Changed != null) Changed();
             }
         }
         finally
@@ -253,37 +367,40 @@ internal sealed class ResourcesModule : IDisposable
             sampling = false;
             if (disposed) sampler.Dispose();
         }
+        if (!disposed && requested != wanted) await Sample();
     }
 
     private void UpdateIcon(StripSettings current)
     {
-        string cpu = ResourcePanel.Percent(reading.Cpu);
+        var metrics = current.VisibleMetrics(true).ToArray();
+        string number = metrics.Length == 0 ? "" : reading.Value(metrics[0], true);
         Color accent = StripSettings.ColorOf(current.Icons);
-        string key = current.ResourcesIconOnly + ":" + accent.ToArgb() + ":" + (current.ResourcesIconOnly ? "" : cpu);
+        string key = accent.ToArgb() + ":" + number;
         Icon previous = null;
         if (key != iconKey)
         {
             previous = icon;
-            icon = CreateIcon(reading.Cpu, accent, current.ResourcesIconOnly);
+            icon = CreateIcon(number, accent);
             iconKey = key;
         }
-        tray.Update(icon, Localize.Text(current.Language, "Ресурси ПК") + " · CPU " + cpu);
+        string title = Localize.Text(current.Language, "Ресурси ПК");
+        tray.Update(icon, metrics.Length == 0 ? title : reading.Describe(metrics, current.Language));
         if (previous != null) previous.Dispose();
     }
 
-    private static Icon CreateIcon(double? cpu, Color accent, bool iconOnly)
+    private static Icon CreateIcon(string value, Color accent)
     {
-        string number = cpu.HasValue ? Math.Round(cpu.Value).ToString() : "—";
+        string number = value.TrimEnd('%');
         using (var bitmap = new Bitmap(32, 32))
         using (var graphics = Graphics.FromImage(bitmap))
         using (var pen = new Pen(accent, 2))
         using (var fill = new SolidBrush(accent))
-        using (var font = new Font("Segoe UI", number.Length > 2 ? 14 : 18, FontStyle.Bold, GraphicsUnit.Pixel))
+        using (var font = new Font("Segoe UI", number.Length > 2 ? 32f / number.Length : 18, FontStyle.Bold, GraphicsUnit.Pixel))
         using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
         {
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            if (!iconOnly)
+            if (number.Length != 0)
             {
                 graphics.DrawRectangle(pen, 3, 5, 26, 22);
                 graphics.DrawLine(pen, 0, 11, 3, 11);
@@ -321,15 +438,46 @@ internal sealed class ResourcesModule : IDisposable
         graphics.Restore(state);
     }
 
-    private void Toggle()
+    internal static float TileWidth(int count, bool compact)
+    {
+        if (count == 0) return compact ? 24 : 29;
+        return 26 + (count + 1) / 2 * (compact ? 36 : 51);
+    }
+
+    internal static void DrawTile(Graphics graphics, RectangleF bounds, ResourceReading reading, StripSettings settings)
+    {
+        var metrics = settings.VisibleMetrics(true).ToArray();
+        Color accent = StripSettings.ColorOf(settings.Icons);
+        float chipX = metrics.Length == 0 ? bounds.X + (bounds.Width - 24) / 2 : bounds.X + 1;
+        DrawChip(graphics, new RectangleF(chipX, bounds.Y + (bounds.Height - 24) / 2, 24, 24), accent);
+        if (metrics.Length == 0) return;
+        using (var font = new Font("Segoe UI", 9, FontStyle.Regular, GraphicsUnit.Pixel))
+        using (var ink = new SolidBrush(StripSettings.ColorOf(settings.Text)))
+        using (var format = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap })
+        {
+            int columns = (metrics.Length + 1) / 2;
+            float width = (bounds.Width - 26) / columns;
+            float height = metrics.Length > 1 ? bounds.Height / 2 : bounds.Height;
+            for (int i = 0; i < metrics.Length; i++)
+            {
+                ResourceMetric metric = metrics[i];
+                int column = i % columns, row = i / columns;
+                string caption = ResourceMetrics.ShortLabel(metric, settings.Language) + " " + reading.Value(metric, true);
+                graphics.DrawString(caption, font, ink, new RectangleF(bounds.X + 26 + column * width, bounds.Y + row * height,
+                    width, height), format);
+            }
+        }
+    }
+
+    internal void Open(Rectangle bounds)
     {
         if (panel != null) { Close(); return; }
         dismissBattery();
-        var bounds = tray.Bounds;
         if (bounds.IsEmpty) bounds = new Rectangle(Cursor.Position, new Size(1, 1));
         panel = new ResourcePanel(reading, settings(), bounds);
         panel.FormClosed += (sender, args) => { if (ReferenceEquals(panel, sender)) panel = null; };
-        tray.PrepareMenu();
+        if (tray != null) tray.PrepareMenu();
         panel.Show();
         if (panel != null) panel.Activate();
     }
@@ -416,7 +564,7 @@ internal sealed class ResourcePanel : Form
         Rectangle screen = Screen.FromRectangle(anchor).WorkingArea;
         double scale = settings.Zoom / 100.0 * dpi / 96.0;
         int width = Math.Min(screen.Width, (int)(302 * scale));
-        int height = Math.Min(screen.Height, (int)(240 * scale));
+        int height = Math.Min(screen.Height, (int)(ViewHeight(settings) * scale));
         int left = StripSettings.Clamp(anchor.Right - width, screen.Left, screen.Right - width);
         int top = StripSettings.Clamp(anchor.Top - height - 7, screen.Top, screen.Bottom - height);
         Bounds = new Rectangle(left, top, width, height);
@@ -424,50 +572,36 @@ internal sealed class ResourcePanel : Form
 
     internal void UpdateReading(ResourceReading value, StripSettings current)
     {
+        bool resize = settings != null && (settings.Zoom != current.Zoom || Height !=
+            Math.Min(Screen.FromRectangle(anchor).WorkingArea.Height, (int)(ViewHeight(current) * current.Zoom / 100.0 * DeviceDpi / 96.0)));
         reading = value;
         settings = current;
         BackColor = StripSettings.PopupColor(current.Background, current.Alpha);
-        AccessibleDescription = string.Join(", ", Labels().Zip(Values(), (label, number) => label + " " + number));
+        AccessibleDescription = value.Describe(current.VisibleMetrics(false), current.Language);
+        if (resize && IsHandleCreated) Place(DeviceDpi);
         Invalidate();
     }
 
-    private string[] Labels()
+    private static int ViewHeight(StripSettings settings)
     {
-        return new[] { "CPU", "RAM", "GPU", Localize.Text(settings.Language, "Системний диск"),
-            "↓ " + Localize.Text(settings.Language, "Завантаження"), "↑ " + Localize.Text(settings.Language, "Віддача") };
-    }
-
-    private string[] Values()
-    {
-        return new[] { Percent(reading.Cpu), Memory(), Percent(reading.Gpu), Percent(reading.Disk),
-            Rate(reading.Download), Rate(reading.Upload) };
-    }
-
-    internal static string Percent(double? value)
-    {
-        return value.HasValue ? value.Value.ToString("0") + "%" : "—";
-    }
-
-    private string Memory()
-    {
-        const double gib = 1024.0 * 1024 * 1024;
-        if (!reading.MemoryUsed.HasValue || !reading.MemoryTotal.HasValue) return "—";
-        return (reading.MemoryUsed.Value / gib).ToString("0.0") + " / " +
-               (reading.MemoryTotal.Value / gib).ToString("0.0") + " GiB";
-    }
-
-    private static string Rate(double? value)
-    {
-        if (!value.HasValue) return "—";
-        if (value.Value >= 1024 * 1024) return (value.Value / (1024 * 1024)).ToString("0.0") + " MiB/s";
-        return (value.Value / 1024).ToString("0.0") + " KiB/s";
+        return 58 + Math.Max(1, settings.VisibleMetrics(false).Count()) * (settings.ResourceScales ? 36 : 27);
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        float scale = Math.Min(Width / 302f, Height / 240f);
-        var graphics = e.Graphics;
+        Draw(e.Graphics, ClientRectangle, reading, settings);
+    }
+
+    internal static void Draw(Graphics graphics, Rectangle bounds, ResourceReading reading, StripSettings settings)
+    {
+        const int width = 302;
+        int height = ViewHeight(settings);
+        float scale = Math.Min(Math.Min(bounds.Width / (float)width, bounds.Height / (float)height), settings.Zoom / 100f *
+            graphics.DpiX / 96);
+        if (scale <= 0) return;
+        var state = graphics.Save();
+        graphics.TranslateTransform(bounds.X, bounds.Y);
         graphics.ScaleTransform(scale, scale);
         graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
         Color ink = StripSettings.ColorOf(settings.Text);
@@ -475,26 +609,38 @@ internal sealed class ResourcePanel : Form
         using (var text = new SolidBrush(ink))
         using (var rose = new SolidBrush(accent))
         using (var dim = new SolidBrush(Color.FromArgb(184, ink)))
+        using (var body = new SolidBrush(StripSettings.PopupColor(settings.Background, settings.Alpha)))
+        using (var rail = new SolidBrush(Color.FromArgb(45, settings.ScaleColor)))
+        using (var bar = new SolidBrush(settings.ScaleColor))
         using (var line = new Pen(Color.FromArgb(60, accent)))
         using (var title = new Font("Segoe UI", 16, FontStyle.Bold, GraphicsUnit.Pixel))
         using (var label = new Font("Segoe UI", 13, FontStyle.Regular, GraphicsUnit.Pixel))
         using (var metric = new Font("Segoe UI", 14, FontStyle.Bold, GraphicsUnit.Pixel))
         using (var end = new StringFormat { Alignment = StringAlignment.Far })
         {
-            graphics.DrawRectangle(line, .5f, .5f, Width / scale - 1, Height / scale - 1);
+            graphics.FillRectangle(body, 0, 0, width, height);
+            graphics.DrawRectangle(line, .5f, .5f, width - 1, height - 1);
             graphics.FillRectangle(rose, 16, 17, 3, 15);
-            graphics.DrawString(Text, title, text, 26, 14);
+            graphics.DrawString(Localize.Text(settings.Language, "Ресурси ПК"), title, text, 26, 14);
             graphics.DrawLine(line, 16, 46, 286, 46);
-            var keys = Labels();
-            var numbers = Values();
-            for (int i = 0; i < keys.Length; i++)
+            var metrics = settings.VisibleMetrics(false).ToArray();
+            if (metrics.Length == 0)
+                graphics.DrawString(Localize.Text(settings.Language, "Показники не вибрано"), label, dim, 16, 58);
+            for (int i = 0; i < metrics.Length; i++)
             {
-                int y = 58 + i * 27;
-                graphics.DrawString(keys[i], label, dim, 16, y);
-                graphics.DrawString(numbers[i], metric, text, new RectangleF(136, y - 1, 150, 22), end);
-                if (i == 3) graphics.DrawLine(line, 16, y + 23, 286, y + 23);
+                ResourceMetric key = metrics[i];
+                int y = 56 + i * (settings.ResourceScales ? 36 : 27);
+                graphics.DrawString(Localize.Text(settings.Language, ResourceMetrics.Label(key)), label, dim, 16, y);
+                graphics.DrawString(reading.Value(key, false), metric, text, new RectangleF(136, y - 1, 150, 22), end);
+                if (!settings.ResourceScales) continue;
+                double? portion = reading.Percent(key) / 100;
+                if (reading.NetworkCapacity > 0 && (key == ResourceMetric.Download || key == ResourceMetric.Upload))
+                    portion = reading.Rate(key) / reading.NetworkCapacity;
+                graphics.FillRectangle(rail, 16, y + 21, 270, 4);
+                if (portion > 0) graphics.FillRectangle(bar, 16, y + 21, (float)(270 * Math.Min(1, portion.Value)), 4);
             }
         }
+        graphics.Restore(state);
     }
 
     protected override void Dispose(bool disposing)

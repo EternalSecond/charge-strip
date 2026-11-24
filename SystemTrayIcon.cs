@@ -14,6 +14,7 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
     private Icon icon;
     private string tooltip = "Charge Strip";
     private bool registered, version4;
+    private bool visible = true;
     public event Action Activated;
     public event Action MenuRequested;
 
@@ -28,6 +29,7 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
         bool changed = icon != next || tooltip != text;
         icon = next;
         tooltip = text;
+        if (!visible) return;
         if (registered && changed)
         {
             var data = MakeData();
@@ -36,9 +38,17 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
         if (!registered) Register();
     }
 
+    internal void SetVisible(bool show)
+    {
+        if (visible == show) return;
+        visible = show;
+        if (show) Register();
+        else Unregister();
+    }
+
     private void Register()
     {
-        if (icon == null) return;
+        if (!visible || icon == null) return;
         var data = MakeData();
         registered = Shell_NotifyIcon(0, ref data);
         if (!registered) return;
@@ -92,12 +102,16 @@ internal sealed class SystemTrayIcon : NativeWindow, IDisposable
     public void Dispose()
     {
         if (Handle == IntPtr.Zero) return;
-        if (registered)
-        {
-            var data = MakeData();
-            Shell_NotifyIcon(2, ref data);
-        }
+        Unregister();
         DestroyHandle();
+    }
+
+    private void Unregister()
+    {
+        if (!registered) return;
+        var data = MakeData();
+        Shell_NotifyIcon(2, ref data);
+        registered = false;
     }
 
     private Data MakeData()
